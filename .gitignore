@@ -1,6 +1,31 @@
-venv/
+# Python
 __pycache__/
-*.pyc
-*.db
-*.sqlite3
+*.py[cod]
+*.pyo
+venv/
 .env
+*.egg-info/
+
+# Base de données locale
+*.db
+*.db-shm
+*.db-wal
+
+# Résultats de scans (temporaires)
+/tmp/
+
+# Clés et secrets
+tok_github
+*.key
+*.pem
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

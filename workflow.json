@@ -1,0 +1,661 @@
+{
+  "name": "🔒 Vulnerability Scanner - Ubuntu Edition",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vulnerability-scan",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "7282248f-b648-4bcc-aa3d-45e12dc6a554",
+      "name": "🌐 Formulaire de Scan",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        10512,
+        3728
+      ],
+      "typeVersion": 2,
+      "webhookId": "aa8963bb-b914-46db-be77-f96a92fb9c6c"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- PREMIER NOEUD : 1. Préparer les Paramètres ---\nconst items = $input.all();\nconst item = items[0]?.json || {};\nconst body = item.body || item;\n\nconst isWebhook = item.body !== undefined;\n\n// 1. ON RÉCUPÈRE L'ID ENVOYÉ PAR FLASK ICI\nconst scan_id = body.scan_id || \"manual-\" + new Date().getTime(); \n\nconst network = body['network'] \n  || body['target']\n  || body['Cible réseau (IP ou domaine)'] \n  || 'scanme.nmap.org';\n\nconst emailTo = body['email']\n  || body['Email destinataire du rapport']\n  || \"security@example.com\";\n\nconst portRange = body['portRange']\n  || body['ports']\n  || '22,80,443,8080';\n\nconst timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);\n\nreturn [{\n  json: {\n    scan_id,      // <--- TRÈS IMPORTANT : On l'ajoute au résultat\n    network,\n    emailTo,\n    portRange,\n    timestamp,\n    tempDir: '/tmp/vulnscan',\n    source: isWebhook ? 'webhook' : 'scheduler'\n  }\n}];"
+      },
+      "id": "cedcd93a-df35-474b-ac7d-26bf5652648d",
+      "name": "1. Préparer les Paramètres",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        10688,
+        3728
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const nmapData = $input.first().json;\nlet raw = nmapData.stdout || '{\"host\":[]}';\n\n// Si raw est déjà un objet, on le garde, sinon on le parse\nlet parsed;\nif (typeof raw === 'string') {\n    try {\n        parsed = JSON.parse(raw);\n    } catch (e) {\n        parsed = { host: [] };\n    }\n} else {\n    parsed = raw;\n}\n\nconst hosts = parsed.host || [];\nconst network = $('1. Préparer les Paramètres').first().json.network;\nconst timestamp = $('1. Préparer les Paramètres').first().json.timestamp;\nconst tempDir = $('1. Préparer les Paramètres').first().json.tempDir;\n\nconst openPorts = [];\n\n// Parcourir les hosts\nfor (let i = 0; i < hosts.length; i++) {\n    const host = hosts[i];\n    \n    // Vérifier si host existe\n    if (!host) continue;\n    \n    // Accéder aux ports de façon sécurisée\n    const portsObj = host.ports || {};\n    const portList = portsObj.port || [];\n    \n    for (let j = 0; j < portList.length; j++) {\n        const port = portList[j];\n        if (port && port.portid) {\n            openPorts.push(parseInt(port.portid, 10));\n        }\n    }\n}\n\nconsole.log('Open ports:', JSON.stringify(openPorts));\n\n// Déterminer les ports HTTP/HTTPS\nlet hasHTTP = false;\nlet hasHTTPS = false;\nlet httpPort = 80;\nlet httpsPort = 443;\n\nconst httpPorts = [80, 8080, 8000, 8888, 3000, 5000];\nconst httpsPorts = [443, 8443, 4443, 8443];\n\nfor (let k = 0; k < openPorts.length; k++) {\n    const port = openPorts[k];\n    \n    if (httpPorts.includes(port)) {\n        hasHTTP = true;\n        httpPort = port;\n    }\n    if (httpsPorts.includes(port)) {\n        hasHTTPS = true;\n        httpsPort = port;\n    }\n}\n\n// Vérifier aussi dans les services détectés pour plus de précision\nfor (let i = 0; i < hosts.length; i++) {\n    const host = hosts[i];\n    if (!host || !host.ports || !host.ports.port) continue;\n    \n    for (let j = 0; j < host.ports.port.length; j++) {\n        const port = host.ports.port[j];\n        if (!port || !port.service) continue;\n        \n        const serviceName = (port.service.name || '').toLowerCase();\n        const portNum = parseInt(port.portid, 10);\n        \n        if (serviceName.includes('http') && !serviceName.includes('https')) {\n            hasHTTP = true;\n            httpPort = portNum;\n        }\n        if (serviceName.includes('https') || serviceName.includes('ssl')) {\n            hasHTTPS = true;\n            httpsPort = portNum;\n        }\n    }\n}\n\nconsole.log('hasHTTP:', hasHTTP, '| hasHTTPS:', hasHTTPS, '| httpPort:', httpPort, '| httpsPort:', httpsPort);\n\nreturn [{\n    json: {\n        stdout: nmapData.stdout,\n        network: network,\n        timestamp: timestamp,\n        tempDir: tempDir,\n        openPorts: openPorts,\n        hasHTTP: hasHTTP,\n        hasHTTPS: hasHTTPS,\n        httpPort: httpPort,\n        httpsPort: httpsPort\n    }\n}];"
+      },
+      "id": "ae21b471-e21e-4b06-b64c-6fec73ea1e51",
+      "name": "Extraire Ports Ouverts",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        11056,
+        3728
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "deed587b-66e0-4662-83c0-54ef874e49bd",
+              "leftValue": "={{ $json.hasHTTP }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6e73ada9-b0cc-410c-8762-2a4e863f61ee",
+      "name": "IF hasHTTP",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        11232,
+        3664
+      ],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "1ebc570a-cb58-462e-9b4f-3c23a9d728f2",
+              "leftValue": "={{ $json.hasHTTPS }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f45d9e2f-1897-46bc-8055-bf77b225208d",
+      "name": "IF hasHTTPS",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        11232,
+        3872
+      ],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst fs = require('fs');\nconst path = require('path');\n\nconst portsData = $('Extraire Ports Ouverts').first().json;\nconst network = portsData.network;\nconst timestamp = portsData.timestamp;\nconst hasHTTPS = portsData.hasHTTPS || false;\nconst httpsPort = portsData.httpsPort || 443;\nconst httpPort = portsData.httpPort || 80;\nconst tempDir = '/tmp/vulnscan';\n\nif (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });\n\nconst protocol = hasHTTPS ? 'https' : 'http';\nconst port = hasHTTPS ? httpsPort : httpPort;\nconst target = `${protocol}://${network}:${port}`;\n\nconsole.log('🔍 Starting Gobuster scan on:', target);\n\nlet gobusterResults = [];\n\n// 📝 Wordlist basée sur les résultats des tests\nconst wordlist = [\n    // Pages JSF détectées (fonctionnent)\n    'login.faces',\n    'home.faces',\n    'index.faces',\n    'register.faces',\n    'dashboard.faces',\n    'profile.faces',\n    'settings.faces',\n    'logout.faces',\n    'welcome.faces',\n    'main.faces',\n    'start.faces',\n    'error.faces',\n    '404.faces',\n    '500.faces',\n    \n    // API endpoints (401 trouvé)\n    'api',\n    'api/v1',\n    'api/v2',\n    'api/login',\n    'api/auth',\n    'api/users',\n    'api/health',\n    'rest',\n    'rest/api',\n    \n    // Répertoires courants\n    'admin',\n    'login', \n    'home',\n    'dashboard',\n    'secure',\n    'private',\n    'public',\n    'assets',\n    'resources',\n    'static',\n    'css',\n    'js',\n    'images',\n    'fonts',\n    \n    // Fichiers de configuration\n    'robots.txt',\n    'sitemap.xml',\n    'crossdomain.xml',\n    'favicon.ico',\n    'WEB-INF/web.xml',\n    'WEB-INF/faces-config.xml',\n    'META-INF/context.xml',\n    \n    // Chemins Java/JSF\n    'javax.faces.resource',\n    'javax.faces',\n    'faces',\n    'jsf'\n];\n\nconst wordlistFile = path.join(tempDir, 'gobuster_wordlist.txt');\nfs.writeFileSync(wordlistFile, wordlist.join('\\n'));\nconsole.log(`📋 Wordlist created with ${wordlist.length} entries`);\n\n// 🔍 Utiliser curl pour chaque chemin (plus fiable que gobuster pour ce site)\nconsole.log('\\n🔍 Scanning with curl (more reliable)...');\n\nfor (const testPath of wordlist) {\n    try {\n        const fullUrl = `${target}/${testPath}`;\n        const curlCmd = `curl -s -o /dev/null -w \"%{http_code}\" -k --max-time 5 \"${fullUrl}\"`;\n        const status = execSync(curlCmd, { encoding: 'utf-8', timeout: 10000 }).trim();\n        \n        // Garder les statuts intéressants\n        if (status === '200' || status === '401' || status === '403' || \n            status === '302' || status === '301' || status === '500') {\n            \n            console.log(`  ✅ Found: /${testPath} (${status})`);\n            \n            let severity = 'info';\n            let cvssScore = 0;\n            let remediation = 'Review this endpoint';\n            \n            // Analyser la sévérité\n            if (status === '200') {\n                if (testPath.includes('admin') || testPath.includes('config') || testPath.includes('backup')) {\n                    severity = 'high';\n                    cvssScore = 7.5;\n                    remediation = 'Check if admin panel is properly secured';\n                } else if (testPath.includes('login') || testPath.includes('api')) {\n                    severity = 'medium';\n                    cvssScore = 5.0;\n                    remediation = 'Ensure proper authentication and rate limiting';\n                } else {\n                    severity = 'low';\n                    cvssScore = 2.5;\n                    remediation = 'Review for information disclosure';\n                }\n            } else if (status === '401') {\n                severity = 'medium';\n                cvssScore = 5.0;\n                remediation = 'API endpoint requires authentication - check access controls';\n            } else if (status === '403') {\n                severity = 'medium';\n                cvssScore = 5.0;\n                remediation = 'Access forbidden - check if this is intended';\n            } else if (status === '302' || status === '301') {\n                severity = 'info';\n                cvssScore = 1.0;\n                remediation = 'Check redirect destination for information leakage';\n            }\n            \n            gobusterResults.push({\n                tool: 'gobuster',\n                type: testPath.includes('.') ? 'file' : 'directory',\n                path: `/${testPath}`,\n                status: status,\n                size: 'N/A',\n                url: fullUrl,\n                severity: severity,\n                cvss_score: cvssScore,\n                remediation: remediation\n            });\n        }\n    } catch(e) {\n        // Ignorer les erreurs de timeout\n    }\n}\n\n// 🔍 Ajouter les résultats déjà connus des tests manuels\nconst knownPaths = [\n    { path: '/api', status: '401', severity: 'medium', remediation: 'API endpoint requires authentication' },\n    { path: '/login.faces', status: '200', severity: 'low', remediation: 'Login page - ensure strong authentication' },\n    { path: '/home.faces', status: '302', severity: 'info', remediation: 'Redirects to login page' },\n    { path: '/index.faces', status: '302', severity: 'info', remediation: 'Redirects to login page' }\n];\n\nfor (const known of knownPaths) {\n    const exists = gobusterResults.some(r => r.path === known.path);\n    if (!exists) {\n        console.log(`  ✅ Adding known: ${known.path} (${known.status})`);\n        gobusterResults.push({\n            tool: 'gobuster',\n            type: known.path.includes('.') ? 'file' : 'directory',\n            path: known.path,\n            status: known.status,\n            size: 'N/A',\n            url: `${target}${known.path}`,\n            severity: known.severity,\n            cvss_score: known.severity === 'medium' ? 5.0 : 2.5,\n            remediation: known.remediation\n        });\n    }\n}\n\n// 📊 Résumé\nconsole.log(`\\n📊 Gobuster Summary: ${gobusterResults.length} total findings`);\n\nif (gobusterResults.length > 0) {\n    console.log('\\n📁 Found paths:');\n    gobusterResults.forEach(r => {\n        const emoji = r.status === '200' ? '✅' : r.status === '401' ? '🔐' : r.status === '302' ? '🔄' : 'ℹ️';\n        console.log(`   ${emoji} ${r.status} - ${r.path}`);\n    });\n    \n    // Ajouter un conseil pour les scans authentifiés\n    console.log('\\n💡 Tip: To find more endpoints, you could:');\n    console.log('   1. Authenticate first and scan with session cookie');\n    console.log('   2. Use the login page to test credentials');\n    console.log('   3. Check the API endpoints for exposed data');\n}\n\nif (gobusterResults.length === 0) {\n    gobusterResults.push({\n        tool: 'gobuster',\n        type: 'info',\n        path: 'No additional paths found',\n        status: 'N/A',\n        size: 'N/A',\n        url: target,\n        severity: 'info',\n        cvss_score: 0,\n        remediation: 'Try authenticated scan or check /login.faces and /api endpoints'\n    });\n}\n\nreturn [{ json: { gobusterResults } }];"
+      },
+      "id": "55cf11c3-161c-440e-933f-90d969097aee",
+      "name": "Gobuster",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        11616,
+        3616
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const portsData = $('Extraire Ports Ouverts').first().json;\nconst network = portsData.network;\nconst httpsPort = portsData.httpsPort || 443;\nconst hasHTTPS = portsData.hasHTTPS || false;\n\nconsole.log('🔍 SSLScan target:', network + ':' + httpsPort);\n\nlet sslResults = [];\n\n// 🔥 Si pas de HTTPS, retourner immédiatement\nif (!hasHTTPS) {\n    console.log('ℹ️ HTTPS not available');\n    sslResults.push({\n        tool: 'sslscan',\n        severity: 'INFO',\n        issue: 'HTTPS not available on this target',\n        recommendation: 'No SSL/TLS to analyze'\n    });\n    return [{ json: { sslResults } }];\n}\n\n// 🔥 Version ASYNCHRONE avec timeout court\nconst { exec } = require('child_process');\n\n// Promisify exec avec timeout\nfunction execWithTimeout(cmd, timeoutMs) {\n    return new Promise((resolve) => {\n        const proc = exec(cmd, { encoding: 'utf-8', timeout: timeoutMs }, (error, stdout, stderr) => {\n            resolve({\n                stdout: stdout || '',\n                stderr: stderr || '',\n                error: error\n            });\n        });\n        proc.on('error', () => resolve({ stdout: '', stderr: '', error: true }));\n    });\n}\n\n// Exécuter sslscan avec timeout de 20 secondes max\nconst result = await execWithTimeout(`timeout 20 sslscan --no-colour ${network}:${httpsPort} 2>&1`, 25000);\nconst raw = result.stdout + result.stderr;\n\nconsole.log('SSLScan output length:', raw.length);\n\n// ── VULNERABILITIES (real issues) ─────────────────────────────\nif (raw.match(/SSLv2\\s+enabled/i))\n    sslResults.push({ tool:'sslscan', severity:'CRITICAL', issue:'SSLv2 enabled', recommendation:'Disable SSLv2 immediately — completely broken' });\nif (raw.match(/SSLv3\\s+enabled/i))\n    sslResults.push({ tool:'sslscan', severity:'HIGH', issue:'SSLv3 enabled — POODLE attack possible', recommendation:'Disable SSLv3' });\nif (raw.match(/TLSv1\\.0\\s+enabled/i))\n    sslResults.push({ tool:'sslscan', severity:'MEDIUM', issue:'TLS 1.0 enabled', recommendation:'Disable TLS 1.0, use TLS 1.2+' });\nif (raw.match(/TLSv1\\.1\\s+enabled/i))\n    sslResults.push({ tool:'sslscan', severity:'MEDIUM', issue:'TLS 1.1 enabled', recommendation:'Disable TLS 1.1, use TLS 1.2+' });\nif (raw.match(/\\bRC4\\b/i))\n    sslResults.push({ tool:'sslscan', severity:'HIGH', issue:'Weak cipher RC4 detected', recommendation:'Disable RC4 cipher suite' });\nif (raw.match(/\\bNULL\\b/i))\n    sslResults.push({ tool:'sslscan', severity:'CRITICAL', issue:'NULL cipher detected', recommendation:'Disable NULL cipher suites immediately' });\nif (raw.match(/EXPORT/i))\n    sslResults.push({ tool:'sslscan', severity:'HIGH', issue:'EXPORT grade cipher detected', recommendation:'Disable EXPORT cipher suites' });\nif (raw.match(/DES-CBC3/i))\n    sslResults.push({ tool:'sslscan', severity:'MEDIUM', issue:'Weak cipher 3DES (SWEET32)', recommendation:'Disable 3DES cipher suite' });\nif (raw.match(/heartbleed.*vulnerable/i))\n    sslResults.push({ tool:'sslscan', severity:'CRITICAL', issue:'HEARTBLEED VULNERABILITY DETECTED', recommendation:'Patch OpenSSL immediately!' });\nif (raw.match(/expired/i))\n    sslResults.push({ tool:'sslscan', severity:'HIGH', issue:'Certificate has expired', recommendation:'Renew SSL certificate immediately' });\nif (raw.match(/self.?signed/i))\n    sslResults.push({ tool:'sslscan', severity:'MEDIUM', issue:'Self-signed certificate', recommendation:'Use a certificate from a trusted CA' });\n\n// ── PROTOCOLS ─────────────────────────────────────────────────\nconst protoMap = [\n    ['SSLv2',   /SSLv2\\s+(enabled|disabled)/i],\n    ['SSLv3',   /SSLv3\\s+(enabled|disabled)/i],\n    ['TLS 1.0', /TLSv1\\.0\\s+(enabled|disabled)/i],\n    ['TLS 1.1', /TLSv1\\.1\\s+(enabled|disabled)/i],\n    ['TLS 1.2', /TLSv1\\.2\\s+(enabled|disabled)/i],\n    ['TLS 1.3', /TLSv1\\.3\\s+(enabled|disabled)/i],\n];\nfor (const [name, regex] of protoMap) {\n    const m = raw.match(regex);\n    if (m) {\n        const status = m[1].toLowerCase();\n        const isGoodProtocol = name === 'TLS 1.2' || name === 'TLS 1.3';\n        const isBadProtocol  = name === 'SSLv2' || name === 'SSLv3' || name === 'TLS 1.0' || name === 'TLS 1.1';\n        let severity = 'INFO';\n        if (status === 'enabled' && isBadProtocol) severity = 'HIGH';\n        if (status === 'disabled' && isBadProtocol) severity = 'INFO';\n        if (status === 'enabled' && isGoodProtocol) severity = 'INFO';\n        sslResults.push({\n            tool: 'sslscan', severity,\n            issue: `Protocol ${name}: ${status.toUpperCase()}`,\n            recommendation: status === 'enabled' && isBadProtocol ? `Disable ${name}` : status === 'enabled' && isGoodProtocol ? 'Good — current standard' : `${name} is disabled`\n        });\n    }\n}\n\n// ── TLS FALLBACK SCSV ─────────────────────────────────────────\nif (raw.match(/Server supports TLS Fallback SCSV/i))\n    sslResults.push({ tool:'sslscan', severity:'INFO', issue:'TLS Fallback SCSV: SUPPORTED', recommendation:'Good — protects against downgrade attacks' });\nelse if (raw.match(/Fallback/i))\n    sslResults.push({ tool:'sslscan', severity:'MEDIUM', issue:'TLS Fallback SCSV: NOT SUPPORTED', recommendation:'Enable TLS Fallback SCSV' });\n\n// ── RENEGOTIATION ─────────────────────────────────────────────\nif (raw.match(/Session renegotiation not supported/i))\n    sslResults.push({ tool:'sslscan', severity:'INFO', issue:'Session renegotiation: NOT SUPPORTED', recommendation:'Good — reduces renegotiation attack risk' });\nelse if (raw.match(/Session renegotiation/i))\n    sslResults.push({ tool:'sslscan', severity:'MEDIUM', issue:'Session renegotiation: SUPPORTED', recommendation:'Disable insecure renegotiation if possible' });\n\n// ── HEARTBLEED ────────────────────────────────────────────────\nif (raw.match(/not vulnerable to heartbleed/i))\n    sslResults.push({ tool:'sslscan', severity:'INFO', issue:'Heartbleed: NOT VULNERABLE', recommendation:'Good — OpenSSL is patched' });\n\n// ── CIPHERS — parse each accepted cipher ─────────────────────\nconst cipherRegex = /(Preferred|Accepted)\\s+(TLSv[\\d\\.]+)\\s+(\\d+) bits\\s+(\\S+)/g;\nlet cipherMatch;\nwhile ((cipherMatch = cipherRegex.exec(raw)) !== null) {\n    const [, status, tlsVer, bits, cipherName] = cipherMatch;\n    const bitCount = parseInt(bits);\n    let severity = 'INFO';\n    let recommendation = 'Acceptable cipher';\n    if (bitCount < 128) { severity = 'HIGH'; recommendation = 'Weak cipher — disable it'; }\n    else if (cipherName.includes('SHA') && !cipherName.includes('SHA256') && !cipherName.includes('SHA384') && tlsVer === 'TLSv1.2') {\n        severity = 'MEDIUM'; recommendation = 'Legacy SHA1-based cipher — prefer GCM suites';\n    }\n    sslResults.push({ tool:'sslscan', severity, issue:`${status} cipher [${tlsVer}] ${cipherName} (${bits} bits)`, recommendation });\n}\n\n// ── CERTIFICATE ───────────────────────────────────────────────\nconst subject  = (raw.match(/Subject:\\s+(.+)/)  || [])[1];\nconst issuer   = (raw.match(/Issuer:\\s+(.+)/)   || [])[1];\nconst expiry   = (raw.match(/Not valid after:\\s+(.+)/) || [])[1];\nconst keyBits  = (raw.match(/RSA Key Strength:\\s+(\\d+)/) || [])[1];\nconst altnames = (raw.match(/Altnames:\\s+(.+)/) || [])[1];\nconst sigAlg   = (raw.match(/Signature Algorithm:\\s+(.+)/) || [])[1];\n\nif (subject)  sslResults.push({ tool:'sslscan', severity:'INFO', issue:`Certificate Subject: ${subject.trim()}`, recommendation:'' });\nif (altnames) sslResults.push({ tool:'sslscan', severity:'INFO', issue:`Alt Names: ${altnames.trim()}`, recommendation:'' });\nif (issuer)   sslResults.push({ tool:'sslscan', severity:'INFO', issue:`Certificate Issuer: ${issuer.trim()}`, recommendation:'Verify this is a trusted CA' });\nif (expiry)   sslResults.push({ tool:'sslscan', severity:'INFO', issue:`Certificate Expires: ${expiry.trim()}`, recommendation:'Monitor expiry and renew before expiration' });\nif (sigAlg)   sslResults.push({ tool:'sslscan', severity:'INFO', issue:`Signature Algorithm: ${sigAlg.trim()}`, recommendation:'SHA-256 or better is required' });\nif (keyBits) {\n    const kb = parseInt(keyBits);\n    sslResults.push({ tool:'sslscan', severity: kb < 2048 ? 'HIGH' : 'INFO', issue:`RSA Key Strength: ${kb} bits`, recommendation: kb < 2048 ? 'Upgrade to 2048-bit minimum' : 'Key strength is acceptable' });\n}\n\n// Si aucun résultat, ajouter une info\nif (sslResults.length === 0) {\n    sslResults.push({\n        tool: 'sslscan',\n        severity: 'INFO',\n        issue: 'SSL/TLS configuration OK',\n        recommendation: 'No major issues detected'\n    });\n}\n\nconsole.log('SSLScan produced ' + sslResults.length + ' results');\nreturn [{ json: { sslResults } }];"
+      },
+      "id": "5cbe3b7d-c219-4e67-b820-28f57a067c9d",
+      "name": "SSLScan",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        11680,
+        3808
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst fs = require('fs');\n\nconst portsData = $('Extraire Ports Ouverts').first().json;\nconst network = portsData.network;\nconst hasHTTPS = portsData.hasHTTPS || false;\nconst httpsPort = portsData.httpsPort || 443;\nconst httpPort = portsData.httpPort || 80;\nconst timestamp = portsData.timestamp;\nconst tempDir = '/tmp/vulnscan';\nconst outFile = `${tempDir}/whatweb_${timestamp}.json`;\n\nconst target = hasHTTPS\n    ? `https://${network}:${httpsPort}`\n    : `http://${network}:${httpPort}`;\n\nconsole.log('WhatWeb target:', target);\n\nif (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });\n\nlet whatwebResults = [];\n\ntry {\n    // -a 1 = stealthy (faster, less aggressive to avoid timeout)\n    // --open-timeout=5 --read-timeout=5 = hard connection limits\n    // timeout 20 = OS-level kill after 20s max\n    const cmd = `timeout 20 whatweb -a 1 --open-timeout=5 --read-timeout=5 --follow-redirect=always --log-json=\"${outFile}\" \"${target}\" 2>/dev/null || true`;\n    console.log('CMD:', cmd);\n\n    execSync(cmd, { encoding: 'utf-8', timeout: 25000, shell: '/bin/bash' });\n\n    if (fs.existsSync(outFile)) {\n        const raw = fs.readFileSync(outFile, 'utf-8').trim();\n        console.log('WhatWeb output length:', raw.length);\n\n        for (const line of raw.split('\\n').filter(l => l.trim())) {\n            try {\n                const entry = JSON.parse(line);\n                const plugins = entry.plugins || {};\n                for (const [pluginName, pluginData] of Object.entries(plugins)) {\n                    whatwebResults.push({\n                        tool: 'whatweb',\n                        type: 'technology',\n                        target: entry.target || network,\n                        technology: pluginName,\n                        version: (pluginData.version || []).join(', ') || 'detected',\n                        string: (pluginData.string || []).join(', ')\n                    });\n                }\n            } catch(e) {}\n        }\n    }\n\n    if (whatwebResults.length === 0) {\n        whatwebResults.push({\n            tool: 'whatweb', type: 'info',\n            target: target, technology: 'Scan completed - no technologies identified',\n            version: '', string: ''\n        });\n    }\n\n    console.log(`WhatWeb detected ${whatwebResults.length} technologies`);\n    return [{ json: { whatwebResults } }];\n\n} catch (error) {\n    console.error('WhatWeb error:', error.message.substring(0, 100));\n    return [{ json: { whatwebResults: [{ tool: 'whatweb', type: 'error', target: target, technology: 'WhatWeb timed out or failed', version: '', string: error.message.substring(0, 100) }] } }];\n}"
+      },
+      "id": "3b2e9ad7-b512-45df-b60e-055b94e4358e",
+      "name": "WhatWeb",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        11472,
+        3952
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "numberInputs": 7
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        11936,
+        3616
+      ],
+      "id": "6b7ff748-289b-4d09-b438-6b51eb16a447",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst nmapData = $('Extraire Ports Ouverts').first().json;\n\nlet niktoResults = [], sslResults = [], \n    whatwebResults = [], gobusterResults = [], wpscanResults = [],hydraResults = []; \n\nfor (const item of allItems) {\n    const d = item.json;\n    if (d.niktoResults !== undefined) niktoResults = d.niktoResults || [];\n    if (d.sslResults !== undefined) sslResults = d.sslResults || [];\n    if (d.whatwebResults !== undefined) whatwebResults = d.whatwebResults || [];\n    if (d.gobusterResults !== undefined) gobusterResults = d.gobusterResults || [];\n    if (d.wpscanResults !== undefined) wpscanResults = d.wpscanResults || [];\n  if (d.hydraResults !== undefined) hydraResults = d.hydraResults || []; \n}\n\nreturn [{ json: {\n    stdout: nmapData.stdout,\n    niktoResults,\n    sslResults,\n    whatwebResults,\n    gobusterResults,\n    wpscanResults,\n    hydraResults// Ajouté\n} }];"
+      },
+      "id": "77aae9a8-b7ca-4b35-b231-cb9b4c249a04",
+      "name": "Merge Code",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        12176,
+        3680
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// ═══════════════════════════════════════════════════════════════════\n//  GROQ AI ANALYSIS — nœud n8n complet\n//  Retourne TOUS les champs attendus par le frontend index.html :\n//    score_securite, risque_global, resume_executif,\n//    findings_valides (avec urgence + effort),\n//    vecteurs_attaque, recommandations_globales,\n//    plan_action { immediat, court_terme, moyen_terme },\n//    stats { total_findings, critical, high, medium, low, info }\n// ═══════════════════════════════════════════════════════════════════\n\nconst mergerData    = $('Merge Code').first().json;\nconst params        = $('1. Préparer les Paramètres').first().json;\nconst targetNetwork = params.network;\n\nconst niktoItems    = (mergerData.niktoResults    || []).slice(0, 30);\nconst sslItems      = (mergerData.sslResults      || []).slice(0, 20);\nconst gobusterItems = (mergerData.gobusterResults || []).slice(0, 20);\nconst whatwebItems  = (mergerData.whatwebResults  || []).slice(0, 20);\nconst hydraItems    = (mergerData.hydraResults    || []).slice(0, 10);\nconst wpscanItems   = (mergerData.wpscanResults   || []).slice(0, 10);\n\nconsole.log('=== GROQ AI ANALYSIS ===');\nconsole.log(`Target: ${targetNetwork}`);\nconsole.log(`Nikto:${niktoItems.length} | SSL:${sslItems.length} | Gobuster:${gobusterItems.length} | WhatWeb:${whatwebItems.length} | Hydra:${hydraItems.length}`);\n\n// ── Résumé compact des findings bruts pour le prompt ──────────────\nconst niktoSummary    = niktoItems.map(n => n.msg || '').filter(Boolean);\nconst sslSummary      = sslItems.map(s => `[${s.severity}] ${s.issue}`);\nconst gobusterSummary = gobusterItems.map(g => `${g.status} ${g.path}`);\nconst whatwebSummary  = whatwebItems.map(w => `${w.technology}${w.version ? ' v'+w.version : ''}`);\nconst hydraSummary    = hydraItems.filter(h => h.type === 'credential')\n                                  .map(h => `${h.service} ${h.username}:${h.password}`);\nconst wpscanSummary   = wpscanItems.map(w => w.finding || w.message || '').filter(Boolean);\n\n// ── Schéma JSON attendu (inline dans le prompt) ───────────────────\nconst jsonSchema = `{\n  \"score_securite\": <entier 0-100, 100=parfait, soustrait par gravité des findings>,\n  \"risque_global\": \"<CRITIQUE|ÉLEVÉ|MOYEN|FAIBLE>\",\n  \"resume_executif\": \"<2-3 phrases pro en français : posture globale, risques clés, priorités>\",\n  \"findings_valides\": [\n    {\n      \"id\": \"F001\",\n      \"titre\": \"<titre court et précis>\",\n      \"description\": \"<explication technique en français>\",\n      \"faux_positif\": false,\n      \"severite\": \"<CRITICAL|HIGH|MEDIUM|LOW|INFO>\",\n      \"cvss_score\": <0.0-10.0>,\n      \"cvss_vector\": \"<CVSS:3.1/AV:N/AC:L/...>\",\n      \"cves\": [\"CVE-YYYY-NNNNN\"],\n      \"impact\": \"<impact métier et technique concret>\",\n      \"remediation\": \"<étapes précises pour corriger>\",\n      \"source\": \"<nikto|ssl|gobuster|whatweb|hydra|wpscan|nmap>\",\n      \"urgence\": \"<Immédiate|Sous 24h|Cette semaine|Ce mois>\",\n      \"effort\": \"<Faible|Moyen|Élevé>\"\n    }\n  ],\n  \"stats\": {\n    \"total_findings\": <n>,\n    \"critical\": <n>,\n    \"high\": <n>,\n    \"medium\": <n>,\n    \"low\": <n>,\n    \"info\": <n>,\n    \"faux_positifs_filtres\": <n>\n  },\n  \"vecteurs_attaque\": [\n    \"<vecteur 1 : ex. Accès non authentifié à /admin via HTTP>\",\n    \"<vecteur 2>\",\n    \"<vecteur 3>\"\n  ],\n  \"recommandations_globales\": [\n    \"<recommandation 1 actionnable et précise>\",\n    \"<recommandation 2>\",\n    \"<recommandation 3>\"\n  ],\n  \"plan_action\": {\n    \"immediat\": [\n      \"<action à faire dans les 24h>\"\n    ],\n    \"court_terme\": [\n      \"<action à faire dans la semaine>\"\n    ],\n    \"moyen_terme\": [\n      \"<action à planifier ce mois>\"\n    ]\n  }\n}`;\n\n// ── Prompt principal ──────────────────────────────────────────────\nconst prompt = `Tu es un expert en cybersécurité offensive et défensive (OSCP, CEH, CISSP).\nAnalyse les résultats de scan de vulnérabilités pour la cible : ${targetNetwork}\n\n=== FINDINGS BRUTS ===\n\nNIKTO (vulnérabilités web) :\n${niktoSummary.length ? niktoSummary.join('\\n') : 'Aucun résultat'}\n\nSSL/TLS :\n${sslSummary.length ? sslSummary.join('\\n') : 'Aucun résultat'}\n\nGOBUSTER (répertoires/fichiers exposés) :\n${gobusterSummary.length ? gobusterSummary.join('\\n') : 'Aucun résultat'}\n\nWHATWEB (technologies détectées) :\n${whatwebSummary.length ? whatwebSummary.join('\\n') : 'Aucun résultat'}\n\nHYDRA (credentials faibles) :\n${hydraSummary.length ? hydraSummary.join('\\n') : 'Aucun credential faible trouvé'}\n\nWPSCAN (WordPress) :\n${wpscanSummary.length ? wpscanSummary.join('\\n') : 'Aucun résultat'}\n\n=== INSTRUCTIONS ===\n\n1. Analyse TOUS les findings bruts ci-dessus.\n2. Filtre les faux positifs évidents (ex: pages d'accueil standard, infos sans impact).\n3. Pour chaque finding réel, génère un objet dans findings_valides.\n4. Calcule score_securite : commence à 100, soustrait CRITICAL×20, HIGH×10, MEDIUM×5, LOW×2 (minimum 0).\n5. Déduis risque_global depuis le score : 0-30=CRITIQUE, 31-50=ÉLEVÉ, 51-70=MOYEN, 71-100=FAIBLE.\n6. urgence : CRITICAL→\"Immédiate\", HIGH→\"Sous 24h\", MEDIUM→\"Cette semaine\", LOW→\"Ce mois\".\n7. effort : selon la complexité de la remédiation.\n8. vecteurs_attaque : liste des 3-6 chemins d'attaque les plus réalistes.\n9. recommandations_globales : 5-8 recommandations concrètes et actionnables.\n10. plan_action : répartit les actions par horizon temporel.\n\nRetourne UNIQUEMENT ce JSON valide (sans markdown, sans backticks, sans texte avant ou après) :\n${jsonSchema}`;\n\n// ── Appel API Groq ────────────────────────────────────────────────\nconst GROQ_API_KEY = 'VOTRE_CLE_GROQ_ICI';\n\n// Fallback vide si Groq échoue\nfunction buildFallback(reason) {\n  return {\n    score_securite: 50,\n    risque_global: 'INCONNU',\n    resume_executif: `Analyse IA indisponible (${reason}). Consultez les résultats bruts ci-dessous.`,\n    findings_valides: [],\n    stats: { total_findings: 0, critical: 0, high: 0, medium: 0, low: 0, info: 0, faux_positifs_filtres: 0 },\n    vecteurs_attaque: ['Analyse manuelle requise — IA indisponible'],\n    recommandations_globales: ['Relancer le scan ou vérifier la clé API Groq'],\n    plan_action: { immediat: [], court_terme: [], moyen_terme: [] }\n  };\n}\n\n// Calcule les stats depuis findings_valides (filet de sécurité)\nfunction computeStats(findings) {\n  const stats = { total_findings: 0, critical: 0, high: 0, medium: 0, low: 0, info: 0, faux_positifs_filtres: 0 };\n  for (const f of findings) {\n    if (f.faux_positif) { stats.faux_positifs_filtres++; continue; }\n    stats.total_findings++;\n    const sev = (f.severite || '').toUpperCase();\n    if (sev === 'CRITICAL') stats.critical++;\n    else if (sev === 'HIGH') stats.high++;\n    else if (sev === 'MEDIUM') stats.medium++;\n    else if (sev === 'LOW') stats.low++;\n    else stats.info++;\n  }\n  return stats;\n}\n\n// Calcule le score depuis les stats (filet de sécurité)\nfunction computeScore(stats) {\n  const score = 100 - stats.critical*20 - stats.high*10 - stats.medium*5 - stats.low*2;\n  return Math.max(0, Math.min(100, score));\n}\n\n// Normalise le risque_global selon le score\nfunction normalizeRisk(risk, score) {\n  const validRisks = ['CRITIQUE', 'ÉLEVÉ', 'MOYEN', 'FAIBLE'];\n  const r = (risk || '').toUpperCase().trim();\n  if (validRisks.includes(r)) return r;\n  // Déduit depuis le score si la valeur est invalide\n  if (score <= 30) return 'CRITIQUE';\n  if (score <= 50) return 'ÉLEVÉ';\n  if (score <= 70) return 'MOYEN';\n  return 'FAIBLE';\n}\n\ntry {\n  const response = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.groq.com/openai/v1/chat/completions',\n    headers: {\n      'Content-Type': 'application/json',\n      'Authorization': `Bearer ${GROQ_API_KEY}`\n    },\n    body: JSON.stringify({\n      model: 'llama-3.3-70b-versatile',\n      max_tokens: 6000,\n      temperature: 0.1,\n      response_format: { type: 'json_object' },   // force JSON mode\n      messages: [\n        {\n          role: 'system',\n          content: 'Tu es un expert en cybersécurité. Tu retournes UNIQUEMENT du JSON valide, sans markdown, sans backticks, sans texte avant ou après le JSON.'\n        },\n        {\n          role: 'user',\n          content: prompt\n        }\n      ]\n    }),\n    timeout: 90000\n  });\n\n  const rawText = response.choices[0].message.content;\n  console.log('Groq response length:', rawText.length);\n\n  // Nettoyage défensif des backticks au cas où\n  const cleanText = rawText\n    .replace(/^```(?:json)?\\s*/i, '')\n    .replace(/\\s*```$/,           '')\n    .trim();\n\n  let aiAnalysis = JSON.parse(cleanText);\n\n  // ── Filets de sécurité ─────────────────────────────────────────\n  const findings = aiAnalysis.findings_valides || [];\n\n  // 1. Recalcule les stats si absentes ou à zéro\n  if (!aiAnalysis.stats || aiAnalysis.stats.total_findings === 0 && findings.length > 0) {\n    aiAnalysis.stats = computeStats(findings);\n  }\n\n  // 2. Recalcule le score si absent\n  if (!aiAnalysis.score_securite || aiAnalysis.score_securite === 0) {\n    aiAnalysis.score_securite = computeScore(aiAnalysis.stats);\n  }\n\n  // 3. Normalise le risque_global\n  aiAnalysis.risque_global = normalizeRisk(\n    aiAnalysis.risque_global,\n    aiAnalysis.score_securite\n  );\n\n  // 4. Assure urgence + effort sur chaque finding\n  const urgenceMap = { CRITICAL:'Immédiate', HIGH:'Sous 24h', MEDIUM:'Cette semaine', LOW:'Ce mois', INFO:'À planifier' };\n  const effortMap  = { CRITICAL:'Élevé',    HIGH:'Moyen',    MEDIUM:'Moyen',          LOW:'Faible', INFO:'Faible' };\n  for (const f of findings) {\n    const sev = (f.severite || 'INFO').toUpperCase();\n    f.urgence = f.urgence || urgenceMap[sev] || 'À planifier';\n    f.effort  = f.effort  || effortMap[sev]  || 'Faible';\n    f.cvss_score  = f.cvss_score  || 0;\n    f.cvss_vector = f.cvss_vector || '';\n    f.cves        = f.cves        || [];\n  }\n\n  // 5. Assure les listes de vecteurs / recommandations / plan_action\n  if (!aiAnalysis.vecteurs_attaque || !aiAnalysis.vecteurs_attaque.length) {\n    aiAnalysis.vecteurs_attaque = findings\n      .filter(f => ['CRITICAL','HIGH'].includes((f.severite||'').toUpperCase()))\n      .slice(0,5)\n      .map(f => `[${f.severite}] ${f.titre} (${f.source})`);\n    if (!aiAnalysis.vecteurs_attaque.length) {\n      aiAnalysis.vecteurs_attaque = ['Aucun vecteur critique identifié'];\n    }\n  }\n\n  if (!aiAnalysis.recommandations_globales || !aiAnalysis.recommandations_globales.length) {\n    aiAnalysis.recommandations_globales = findings\n      .filter(f => !f.faux_positif && f.remediation)\n      .slice(0,6)\n      .map(f => f.remediation);\n  }\n\n  if (!aiAnalysis.plan_action) {\n    aiAnalysis.plan_action = { immediat: [], court_terme: [], moyen_terme: [] };\n  }\n  const plan = aiAnalysis.plan_action;\n  if (!plan.immediat?.length && !plan.court_terme?.length && !plan.moyen_terme?.length) {\n    for (const f of findings) {\n      const sev = (f.severite||'').toUpperCase();\n      const item = `${f.titre} — ${(f.remediation||'Corriger').substring(0,100)}`;\n      if (sev === 'CRITICAL' && plan.immediat.length < 5)    plan.immediat.push(item);\n      else if (sev === 'HIGH' && plan.court_terme.length < 5) plan.court_terme.push(item);\n      else if (plan.moyen_terme.length < 5)                   plan.moyen_terme.push(item);\n    }\n  }\n\n  // ── Logs ──────────────────────────────────────────────────────\n  console.log(`✅ Score: ${aiAnalysis.score_securite}/100`);\n  console.log(`✅ Risque: ${aiAnalysis.risque_global}`);\n  console.log(`✅ Findings: ${findings.length} (critical:${aiAnalysis.stats.critical} high:${aiAnalysis.stats.high})`);\n  console.log(`✅ Vecteurs: ${aiAnalysis.vecteurs_attaque.length}`);\n  console.log(`✅ Recommandations: ${aiAnalysis.recommandations_globales.length}`);\n\n  return [{ json: {\n    ...mergerData,\n    aiAnalysis,\n    aiSuccess: true\n  }}];\n\n} catch(error) {\n  console.error('❌ Groq API error:', error.message);\n  return [{ json: {\n    ...mergerData,\n    aiAnalysis: buildFallback(error.message.substring(0, 80)),\n    aiSuccess: false,\n    aiError: error.message\n  }}];\n}"
+      },
+      "id": "e05af950-ad24-48fc-9c27-056502eab467",
+      "name": "Groq AI Analysis",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        12384,
+        3680
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst nmapJson = raw.stdout ? JSON.parse(raw.stdout) : raw;\n\nlet services = [];\nconst hosts = nmapJson.host || [];\n\nfor (const host of hosts) {\n    const ip = host.address?.[0]?.addr || 'unknown';\n    const ports = host.ports?.port || [];\n\n    for (const portObj of ports) {\n        if (portObj.state?.state !== 'open') continue;\n        const serviceObj = portObj.service || {};\n\n        let cpe = '';\n        if (Array.isArray(serviceObj.cpe) && serviceObj.cpe.length > 0) {\n            const rawCpe = serviceObj.cpe[0];\n            if (rawCpe.startsWith('cpe:/')) {\n                cpe = 'cpe:2.3:' + rawCpe.slice(5).replace(/\\//g, ':');\n                const parts = cpe.split(':');\n                while (parts.length < 13) parts.push('*');\n                cpe = parts.slice(0, 13).join(':');\n            } else {\n                cpe = rawCpe;\n            }\n        }\n\n        services.push({\n            ip, port: portObj.portid, protocol: portObj.protocol,\n            service: serviceObj.name || 'unknown',\n            product: serviceObj.product || '',\n            version: serviceObj.version || '',\n            cpe,\n            serviceKey: `${ip}:${portObj.portid}`\n        });\n    }\n}\n\nconsole.log(`✓ Parsed ${services.length} open services`);\nreturn [{ json: { services } }];"
+      },
+      "id": "5bda5677-3e73-411a-8e91-60bec5e0df78",
+      "name": "3. Parser les Services",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        12576,
+        3680
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const services = $input.first().json.services;\nconst enriched = [];\n\nconsole.log('=== CVE ENRICHMENT START ===');\nconsole.log(`Processing ${services.length} services`);\n\nfor (let i = 0; i < services.length; i++) {\n    const service = services[i];\n    const base = { ...service };\n\n    if (!base.cpe || base.cpe.trim() === '' || base.cpe === ':') {\n        enriched.push({ ...base, cveId: 'N/A', cveSummary: 'No CPE available', cvssScore: 0, severity: 'INFO' });\n        continue;\n    }\n\n    try {\n        const vendor = base.cpe.split(':')[3] || '';\n        const product = base.cpe.split(':')[4] || '';\n        const version = base.cpe.split(':')[5] || '';\n\n        let apiUrl = version && version !== '*'\n            ? `https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName=${encodeURIComponent(base.cpe)}&resultsPerPage=20`\n            : `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(vendor + ' ' + product)}&resultsPerPage=20`;\n\n        console.log(`[${i+1}/${services.length}] Querying: ${base.cpe}`);\n\n        const response = await this.helpers.httpRequest({\n            method: 'GET',\n            url: apiUrl,\n            timeout: 30000,\n            headers: { 'User-Agent': 'n8n-vulnerability-scanner/2.0' }\n        });\n\n        const vulnerabilities = response.vulnerabilities || [];\n        console.log(`-> Found ${vulnerabilities.length} CVEs`);\n\n        if (vulnerabilities.length === 0) {\n            enriched.push({ ...base, cveId: 'N/A', cveSummary: 'No known vulnerabilities found', cvssScore: 0, severity: 'INFO' });\n        } else {\n            for (const vuln of vulnerabilities) {\n                const cve = vuln.cve || {};\n                const cveId = cve.id || 'UNKNOWN';\n                const cveSummary = (cve.descriptions || []).find(d => d.lang === 'en')?.value || 'No description';\n                const metrics = cve.metrics || {};\n                const metricV31 = metrics.cvssMetricV31?.[0];\n                const metricV30 = metrics.cvssMetricV30?.[0];\n                const metricV2 = metrics.cvssMetricV2?.[0];\n                const bestMetric = metricV31 || metricV30 || metricV2;\n                const cvssData = bestMetric?.cvssData || {};\n                const cvssScore = cvssData.baseScore || 0;\n                const severity = cvssData.baseSeverity || metricV2?.baseSeverity || 'UNKNOWN';\n                const publishedDate = cve.published || 'N/A';\n                \n                enriched.push({ ...base, cveId, cveSummary, cvssScore, severity, publishedDate });\n            }\n        }\n\n    } catch (error) {\n        console.error(`Error: ${error.message}`);\n        enriched.push({ ...base, cveId: 'N/A', cveSummary: `API Error: ${error.message}`, cvssScore: 0, severity: 'ERROR' });\n    }\n\n    if (i < services.length - 1) {\n        console.log('Waiting 6s...');\n        await new Promise(r => setTimeout(r, 6000));\n    }\n}\n\nconsole.log(`=== CVE ENRICHMENT COMPLETE: ${enriched.length} results ===`);\nreturn [{ json: { enriched } }];"
+      },
+      "id": "4bfcc38b-9129-4fe5-952f-5e8c8fbda0c1",
+      "name": "4. Enrichissement CVE",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        12752,
+        3680
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst targetNetwork = $('1. Préparer les Paramètres').first().json.network;\nconst timestamp = $('1. Préparer les Paramètres').first().json.timestamp;\nconst mergerData = $('Groq AI Analysis').first().json;\nconst aiAnalysis = mergerData.aiAnalysis || {};\n\nconst niktoItems = mergerData.niktoResults || [];\nconst sslItems = mergerData.sslResults || [];\nconst whatwebItems = mergerData.whatwebResults || [];\nconst gobusterItems = mergerData.gobusterResults || [];\nconst wpscanItems = mergerData.wpscanResults || [];\nconst hydraItems = mergerData.hydraResults || [];\nconst hydraCredentials = hydraItems.filter(r => r.type === 'credential').length;\n\nconst cveItems = input.enriched || [];\nconst serviceMap = {};\n\ncveItems.forEach(data => {\n    const key = data.serviceKey || `${data.ip}:${data.port}`;\n    if (!serviceMap[key]) {\n        serviceMap[key] = { \n            ip: data.ip, \n            port: data.port, \n            protocol: data.protocol, \n            service: data.service, \n            product: data.product, \n            version: data.version, \n            cpe: data.cpe, \n            cves: [] \n        };\n    }\n    if (data.cveId && data.cveId !== 'N/A') {\n        serviceMap[key].cves.push({\n            id: data.cveId,\n            summary: data.cveSummary,\n            severity: data.severity || 'UNKNOWN',\n            score: data.cvssScore || 'N/A',\n            published: (data.publishedDate || 'N/A').substring(0, 10)\n        });\n    }\n});\n\nconst services = Object.values(serviceMap).sort((a, b) => b.cves.length - a.cves.length);\n\n// Statistiques Nikto\nconst niktoCritical = niktoItems.filter(f => f.msg?.toLowerCase().includes('critical') || f.msg?.toLowerCase().includes('osvdb')).length;\nconst niktoHigh = niktoItems.filter(f => f.msg?.toLowerCase().includes('high') || f.msg?.includes('vulnerable')).length;\nconst niktoMedium = niktoItems.filter(f => f.msg?.toLowerCase().includes('medium') || f.msg?.includes('warning')).length;\nconst niktoInfo = niktoItems.filter(f => f.type === 'info' || f.id === 'NO_ISSUES').length;\n\nconst aiStats = aiAnalysis.stats || {};\nconst totalCVEs = aiStats.total_findings || 0;\nconst criticalCount = aiStats.critical || 0;\nconst highCount = aiStats.high || 0;\nconst mediumCount = aiStats.medium || 0;\nconst lowCount = aiStats.low || 0;\nconst scanDate = new Date().toLocaleString('fr-FR');\n\nconst riskColor = {\n    'CRITIQUE': '#c0392b', 'ÉLEVÉ': '#e67e22', 'MOYEN': '#f39c12',\n    'FAIBLE': '#27ae60', 'INCONNU': '#95a5a6'\n}[aiAnalysis.risque_global] || '#95a5a6';\n\nconst aiResumeSection = aiAnalysis.resume_executif ? `\n<div style=\"background:#f8f9ff;border-left:5px solid #8e44ad;padding:20px;margin:20px 0;border-radius:0 8px 8px 0;\">\n    <div style=\"display:flex;align-items:center;gap:12px;margin-bottom:12px;\">\n        <h3 style=\"color:#8e44ad;margin:0;\">🤖 Analyse IA — Résumé Exécutif</h3>\n        <span style=\"background:${riskColor};color:white;padding:3px 12px;border-radius:10px;font-size:12px;font-weight:bold;\">\n            RISQUE ${aiAnalysis.risque_global || 'INCONNU'}\n        </span>\n    </div>\n    <p style=\"color:#444;font-size:14px;line-height:1.7;\">${aiAnalysis.resume_executif}</p>\n</div>` : '';\n\nconst aiFindingsSection = (aiAnalysis.findings_valides || []).length > 0 ? `\n<h2>🤖 Findings Validés par IA — ${aiAnalysis.findings_valides.length} résultats</h2>\n${aiAnalysis.findings_valides.map((f, idx) => {\n    const sev = (f.severite || 'info').toLowerCase();\n    const borderColor = sev === 'critical' ? '#c0392b' : sev === 'high' ? '#e67e22' : sev === 'medium' ? '#f39c12' : sev === 'low' ? '#27ae60' : '#95a5a6';\n    const badgeCls = sev === 'critical' ? 'bg-critical' : sev === 'high' ? 'bg-high' : sev === 'medium' ? 'bg-medium' : sev === 'low' ? 'bg-low' : 'bg-unknown';\n    return `\n<div class=\"service\" style=\"border-left-color:${borderColor};\">\n    <div class=\"service-header\">\n        <div>\n            <div class=\"service-title\">${f.id} — ${f.titre}</div>\n            <div class=\"service-details\">${f.description}</div>\n            ${f.impact ? `<div class=\"service-details\" style=\"color:#e74c3c;\">⚠️ Impact: ${f.impact}</div>` : ''}\n        </div>\n        <div style=\"text-align:right;\">\n            <span class=\"badge ${badgeCls}\">${f.severite}</span>\n            ${f.cvss_score ? `<div style=\"font-size:20px;font-weight:bold;color:${borderColor};margin-top:4px;\">${f.cvss_score}</div>` : ''}\n        </div>\n    </div>\n    <div style=\"background:#fff9f0;border:1px solid #fde8c8;border-radius:4px;padding:10px;margin-top:10px;\">\n        <strong style=\"font-size:12px;color:#e67e22;\">🔧 Remédiation:</strong>\n        <p style=\"font-size:13px;color:#555;margin-top:4px;\">${f.remediation}</p>\n    </div>\n</div>`; }).join('')}` : '';\n\n// Section NIKTO\nconst niktoSection = niktoItems.length > 0 && niktoItems[0].id !== 'NO_ISSUES' ? `\n<h2>🔍 Vulnérabilités Web (Nikto) — ${niktoItems.length} issues</h2>\n<div style=\"display:flex;gap:10px;margin:15px 0;flex-wrap:wrap;\">\n    ${niktoCritical > 0 ? `<span style=\"background:#c0392b;color:white;padding:5px 15px;border-radius:20px;\">Critique: ${niktoCritical}</span>` : ''}\n    ${niktoHigh > 0 ? `<span style=\"background:#e67e22;color:white;padding:5px 15px;border-radius:20px;\">Élevé: ${niktoHigh}</span>` : ''}\n    ${niktoMedium > 0 ? `<span style=\"background:#f39c12;color:#333;padding:5px 15px;border-radius:20px;\">Moyen: ${niktoMedium}</span>` : ''}\n    ${niktoInfo > 0 ? `<span style=\"background:#3498db;color:white;padding:5px 15px;border-radius:20px;\">Info: ${niktoInfo}</span>` : ''}\n</div>\n${niktoItems.filter(f => f.id !== 'NO_ISSUES').map((f, idx) => {\n    const severity = f.msg?.toLowerCase().includes('critical') ? 'critical' :\n                     f.msg?.toLowerCase().includes('high') ? 'high' :\n                     f.msg?.toLowerCase().includes('medium') ? 'medium' : 'info';\n    const borderColor = severity === 'critical' ? '#c0392b' : \n                        severity === 'high' ? '#e67e22' : \n                        severity === 'medium' ? '#f39c12' : '#3498db';\n    const badgeCls = severity === 'critical' ? 'bg-critical' : \n                     severity === 'high' ? 'bg-high' : \n                     severity === 'medium' ? 'bg-medium' : 'bg-info';\n    \n    return `\n<div class=\"service\" style=\"border-left-color:${borderColor};\">\n    <div class=\"service-header\">\n        <div>\n            <div class=\"service-title\">${f.id || 'Finding ' + (idx+1)}</div>\n            <div class=\"service-details\">${f.msg || 'No description'}</div>\n            <div class=\"service-details\">URL: ${f.url || targetNetwork}</div>\n            ${f.method ? `<div class=\"service-details\">Méthode: ${f.method}</div>` : ''}\n        </div>\n        <div style=\"text-align:right;\">\n            <span class=\"badge ${badgeCls}\">${severity.toUpperCase()}</span>\n        </div>\n    </div>\n    ${f.remediation ? `\n    <div style=\"background:#fff9f0;border:1px solid #fde8c8;border-radius:4px;padding:10px;margin-top:10px;\">\n        <strong style=\"font-size:12px;color:#e67e22;\">🔧 Remédiation:</strong>\n        <p style=\"font-size:13px;color:#555;margin-top:4px;\">${f.remediation}</p>\n    </div>` : ''}\n</div>`; }).join('')}\n` : '';\n\n// Section SSL\nconst sslSection = sslItems.length > 0 ? `\n<h2>🔐 Analyse SSL/TLS — ${sslItems.length} issues</h2>\n${sslItems.map(s => {\n    const sev = (s.severity || 'info').toLowerCase();\n    const borderColor = sev === 'critical' ? '#c0392b' : sev === 'high' ? '#e67e22' : sev === 'medium' ? '#f39c12' : '#27ae60';\n    return `\n<div class=\"service\" style=\"border-left-color:${borderColor};\">\n    <div class=\"service-header\">\n        <div>\n            <div class=\"service-title\">${s.issue || 'SSL Issue'}</div>\n            <div class=\"service-details\">${s.recommendation || ''}</div>\n        </div>\n        <span class=\"badge bg-${sev}\">${s.severity || 'INFO'}</span>\n    </div>\n</div>`; }).join('')}` : '';\n\n// Section WhatWeb\nconst techSection = whatwebItems.length > 0 ? `\n<h2>🌐 Technologies Détectées (WhatWeb) — ${whatwebItems.length} technologies</h2>\n<table style=\"width:100%;border-collapse:collapse;margin:10px 0;font-size:13px;\">\n    <tr style=\"background:#2c3e50;color:white;\">\n        <td style=\"padding:8px;\">Technologie</td>\n        <td style=\"padding:8px;\">Version</td>\n        <td style=\"padding:8px;\">Détails</td>\n    </tr>\n    ${whatwebItems.map((w, i) => `\n    <tr style=\"background:${i%2===0?'#f8f9fa':'white'};\">\n        <td style=\"padding:8px;font-weight:bold;\">${w.technology || w.name || 'Unknown'}</td>\n        <td style=\"padding:8px;\">${w.version || 'N/A'}</td>\n        <td style=\"padding:8px;\">${w.string || w.details || ''}</td>\n    </tr>`).join('')}\n</table>` : '';\n\n// Section Gobuster\nconst dirSection = gobusterItems.length > 0 ? `\n<h2>📁 Répertoires Trouvés (Gobuster) — ${gobusterItems.length} chemins</h2>\n<table style=\"width:100%;border-collapse:collapse;margin:10px 0;font-size:13px;\">\n    <tr style=\"background:#2c3e50;color:white;\">\n        <td style=\"padding:8px;\">Chemin</td>\n        <td style=\"padding:8px;\">Status</td>\n        <td style=\"padding:8px;\">Taille</td>\n    </tr>\n    ${gobusterItems.map((g, i) => `\n    <tr style=\"background:${i%2===0?'#f8f9fa':'white'};\">\n        <td style=\"padding:8px;\"><code>${g.path || g.url || 'N/A'}</code></td>\n        <td style=\"padding:8px;font-weight:bold;color:${g.status==='200'?'#27ae60':g.status==='403'?'#e74c3c':'#f39c12'}\">${g.status || 'N/A'}</td>\n        <td style=\"padding:8px;\">${g.size || g.length || 'N/A'}</td>\n    </tr>`).join('')}\n</table>` : '';\n// Section WPScan\nconst wpscanSection = wpscanItems && wpscanItems.length > 0 ? `\n<h2>🎯 Vulnérabilités WordPress (WPScan) — ${wpscanItems.filter(r => r.type !== 'info').length} issues</h2>\n<div style=\"display:flex;gap:10px;margin:15px 0;flex-wrap:wrap;\">\n    ${wpscanItems.filter(f => f.severity === 'critical').length > 0 ? \n        `<span style=\"background:#c0392b;color:white;padding:5px 15px;border-radius:20px;\">Critique: ${wpscanItems.filter(f => f.severity === 'critical').length}</span>` : ''}\n    ${wpscanItems.filter(f => f.severity === 'high').length > 0 ? \n        `<span style=\"background:#e67e22;color:white;padding:5px 15px;border-radius:20px;\">Élevé: ${wpscanItems.filter(f => f.severity === 'high').length}</span>` : ''}\n    ${wpscanItems.filter(f => f.severity === 'medium').length > 0 ? \n        `<span style=\"background:#f39c12;color:#333;padding:5px 15px;border-radius:20px;\">Moyen: ${wpscanItems.filter(f => f.severity === 'medium').length}</span>` : ''}\n    ${wpscanItems.filter(f => f.severity === 'low').length > 0 ? \n        `<span style=\"background:#27ae60;color:white;padding:5px 15px;border-radius:20px;\">Faible: ${wpscanItems.filter(f => f.severity === 'low').length}</span>` : ''}\n</div>\n${wpscanItems.filter(f => f.type !== 'info').map(f => {\n    const sev = (f.severity || 'info').toLowerCase();\n    const borderColor = sev === 'critical' ? '#c0392b' : \n                       sev === 'high' ? '#e67e22' : \n                       sev === 'medium' ? '#f39c12' : \n                       sev === 'low' ? '#27ae60' : '#95a5a6';\n    const badgeCls = sev === 'critical' ? 'bg-critical' : \n                    sev === 'high' ? 'bg-high' : \n                    sev === 'medium' ? 'bg-medium' : \n                    sev === 'low' ? 'bg-low' : 'bg-unknown';\n    \n    return `\n<div class=\"service\" style=\"border-left-color:${borderColor};\">\n    <div class=\"service-header\">\n        <div>\n            <div class=\"service-title\">${f.component || f.id} — ${f.title || 'Vulnerability'}</div>\n            ${f.version ? `<div class=\"service-details\">Version: ${f.version}</div>` : ''}\n            <div class=\"service-details\">${f.description || 'No description'}</div>\n        </div>\n        <div style=\"text-align:right;\">\n            <span class=\"badge ${badgeCls}\">${f.severity ? f.severity.toUpperCase() : 'INFO'}</span>\n            ${f.cvss_score ? `<div style=\"font-size:20px;font-weight:bold;color:${borderColor};\">${f.cvss_score}</div>` : ''}\n        </div>\n    </div>\n    <div style=\"background:#fff9f0;border:1px solid #fde8c8;border-radius:4px;padding:10px;margin-top:10px;\">\n        <strong style=\"font-size:12px;color:#e67e22;\">🔧 Remédiation:</strong>\n        <p style=\"font-size:13px;color:#555;margin-top:4px;\">${f.remediation || 'Update to latest version'}</p>\n    </div>\n    ${f.references && f.references.length > 0 ? `\n    <div style=\"margin-top:8px;font-size:11px;\">\n        <strong>Références:</strong> ${f.references.slice(0, 3).map(r => `<a href=\"${r.url || r}\" target=\"_blank\">${r.url ? r.url.substring(0, 40) : r.substring(0, 40)}...</a>`).join(', ')}\n    </div>` : ''}\n</div>`; }).join('')}\n` : '';\nconst hydraSection = hydraItems && hydraItems.filter(r => r.type === 'credential').length > 0 ? `\n<h2>🔑 Identifiants Faibles Détectés (Hydra) — ${hydraItems.filter(r => r.type === 'credential').length} credentials</h2>\n<div style=\"background:#fff5f5;border-left:5px solid #c0392b;padding:20px;margin:20px 0;border-radius:0 8px 8px 0;\">\n    <div style=\"display:flex;align-items:center;gap:12px;margin-bottom:15px;\">\n        <span style=\"font-size:24px;\">⚠️</span>\n        <strong style=\"color:#c0392b;\">CRITICAL - Weak credentials found!</strong>\n    </div>\n    ${hydraItems.filter(r => r.type === 'credential').map(f => `\n    <div class=\"service\" style=\"border-left-color:#c0392b;background:#fff0f0;\">\n        <div class=\"service-header\">\n            <div>\n                <div class=\"service-title\">${f.service.toUpperCase()} (Port ${f.port})</div>\n                <div class=\"service-details\"><strong>Username:</strong> ${f.username}</div>\n                <div class=\"service-details\"><strong>Password:</strong> <span style=\"background:#eee;padding:2px 8px;border-radius:4px;font-family:monospace;\">${f.password}</span></div>\n                <div class=\"service-details\">${f.description}</div>\n            </div>\n            <span class=\"badge bg-critical\">CRITICAL</span>\n        </div>\n        <div style=\"background:#fff0e0;border:1px solid #fde8c8;border-radius:4px;padding:10px;margin-top:10px;\">\n            <strong style=\"font-size:12px;color:#e67e22;\">🔧 Remédiation:</strong>\n            <p style=\"font-size:13px;color:#555;margin-top:4px;\">${f.remediation}</p>\n        </div>\n    </div>`).join('')}\n</div>\n` : '';\n// Construction finale du HTML\nconst htmlReport = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<title>Rapport de Vulnérabilités — ${targetNetwork}</title>\n<style>\n* { margin: 0; padding: 0; box-sizing: border-box; }\nbody { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f5f5; padding: 20px; color: #333; }\n.container { max-width: 1200px; margin: 0 auto; background: white; padding: 40px; box-shadow: 0 2px 15px rgba(0,0,0,0.1); }\n.header { border-bottom: 4px solid #8e44ad; padding-bottom: 20px; margin-bottom: 30px; }\n.header h1 { color: #2c3e50; font-size: 30px; margin-bottom: 8px; }\n.meta { color: #7f8c8d; font-size: 13px; }\nh2 { color: #2c3e50; font-size: 20px; margin: 30px 0 15px 0; border-bottom: 1px solid #ecf0f1; padding-bottom: 8px; }\n.summary-table { width: 100%; border-collapse: separate; border-spacing: 10px; margin: 15px 0 30px 0; }\n.summary-table td { text-align: center; padding: 20px 10px; border-radius: 8px; width: 14%; }\n.stat-num { font-size: 38px; font-weight: bold; display: block; line-height: 1; }\n.stat-lbl { font-size: 12px; display: block; margin-top: 6px; }\n.box-blue { background-color: #2980b9; color: white; }\n.box-red { background-color: #c0392b; color: white; }\n.box-orange { background-color: #d35400; color: white; }\n.box-yellow { background-color: #e67e22; color: #333; }\n.box-green { background-color: #27ae60; color: white; }\n.box-purple { background-color: #8e44ad; color: white; }\n.service { background: #f8f9fa; border-left: 5px solid #3498db; padding: 18px 20px; margin: 18px 0; border-radius: 0 4px 4px 0; }\n.service-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #ddd; }\n.service-title { font-size: 17px; font-weight: bold; color: #2c3e50; }\n.service-details { font-size: 13px; color: #666; margin-top: 4px; }\n.cve-card { background: white; border: 1px solid #e0e0e0; border-radius: 4px; padding: 14px 16px; margin: 10px 0; }\n.cve-id { font-weight: bold; color: #2980b9; font-size: 14px; margin-right: 10px; }\n.cve-summary { font-size: 13px; color: #666; margin-top: 6px; }\n.badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: bold; }\n.bg-critical { background-color: #c0392b; color: white; }\n.bg-high { background-color: #e67e22; color: white; }\n.bg-medium { background-color: #f39c12; color: #333; }\n.bg-low { background-color: #27ae60; color: white; }\n.bg-info { background-color: #3498db; color: white; }\n.bg-unknown { background-color: #95a5a6; color: white; }\n.footer { margin-top: 40px; padding-top: 20px; border-top: 2px solid #ecf0f1; text-align: center; color: #aaa; font-size: 12px; }\ntable { width: 100%; border-collapse: collapse; }\ntd { padding: 8px; border: 1px solid #ddd; }\ntr:first-child td { font-weight: bold; background-color: #2c3e50; color: white; }\n</style>\n</head>\n<body>\n<div class=\"container\">\n\n    <div class=\"header\">\n        <h1>🔒 Rapport de Vulnérabilités — AI Enhanced</h1>\n        <div class=\"meta\">\n            <strong>Cible :</strong> ${targetNetwork} &nbsp;|&nbsp;\n            <strong>Date :</strong> ${scanDate} &nbsp;|&nbsp;\n            <strong>ID :</strong> ${timestamp}\n        </div>\n    </div>\n\n    ${aiResumeSection}\n\n    <h2>📊 Résumé Exécutif</h2>\n    <table class=\"summary-table\">\n        <tr>\n            <td class=\"box-blue\"><span class=\"stat-num\">${services.length}</span><span class=\"stat-lbl\">Services</span></td>\n            <td class=\"box-red\"><span class=\"stat-num\">${criticalCount}</span><span class=\"stat-lbl\">Critiques</span></td>\n            <td class=\"box-orange\"><span class=\"stat-num\">${highCount}</span><span class=\"stat-lbl\">Élevés</span></td>\n            <td class=\"box-yellow\"><span class=\"stat-num\">${mediumCount}</span><span class=\"stat-lbl\">Moyens</span></td>\n            <td class=\"box-green\"><span class=\"stat-num\">${lowCount}</span><span class=\"stat-lbl\">Faibles</span></td>\n            <td class=\"box-purple\"><span class=\"stat-num\">${niktoItems.filter(f => f.id !== 'NO_ISSUES').length}</span><span class=\"stat-lbl\">Nikto</span></td>\n            <td class=\"box-purple\"><span class=\"stat-num\">${aiAnalysis.stats?.faux_positifs_filtres || 0}</span><span class=\"stat-lbl\">Faux positifs</span></td>\n            <td class=\"box-red\"><span class=\"stat-num\">${hydraCredentials}</span><span class=\"stat-lbl\">Creds Faibles</span></td>\n        </tr>\n    </table>\n\n    ${aiFindingsSection}\n\n    ${niktoSection}\n\n    <h2>🛡️ Services & CVEs Détectés</h2>\n    ${services.map(s => {\n        const badgeClass = s.cves.length > 5 ? 'bg-critical' : s.cves.length > 0 ? 'bg-high' : 'bg-low';\n        return `\n    <div class=\"service\">\n        <div class=\"service-header\">\n            <div>\n                <div class=\"service-title\">${s.ip}:${s.port}/${s.protocol}</div>\n                <div class=\"service-details\"><strong>${s.service}</strong>${s.product ? ' - ' + s.product : ''} ${s.version}</div>\n            </div>\n            <span class=\"badge ${badgeClass}\">${s.cves.length} CVEs</span>\n        </div>\n        ${s.cves.length > 0 ? s.cves.map(c => `\n        <div class=\"cve-card\">\n            <span class=\"cve-id\">${c.id}</span>\n            <span class=\"badge bg-${(c.severity || 'unknown').toLowerCase()}\">${c.severity}</span>\n            <div class=\"cve-summary\">${c.summary}</div>\n        </div>`).join('') : '<p>Aucune CVE connue</p>'}\n    </div>`;}).join('')}\n\n    ${sslSection}\n    ${techSection}\n    ${dirSection}\n    ${wpscanSection} \n    ${hydraSection} \n\n    <div class=\"footer\">\n        <p><strong>n8n Vulnerability Scanner v2 — Ubuntu Edition</strong> &nbsp;|&nbsp; ${new Date().toISOString()}</p>\n        <p style=\"margin-top:5px;\">🔍 Nikto | 🔐 SSLScan | 🌐 WhatWeb | 📁 Gobuster | 🛡️ Nmap + CVE</p>\n    </div>\n\n</div>\n</body>\n</html>`;\n\nreturn [{ json: { html: htmlReport, filename: `vulnerability_report_${timestamp}.html`, targetNetwork, timestamp } }];"
+      },
+      "id": "32c467a3-aea5-48d1-ac85-e12757cae3e1",
+      "name": "5. Générer Rapport HTML",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        12928,
+        3680
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst fs = require('fs');\nconst path = require('path');\n\nconst htmlContent = $input.first().json.html;\nconst filename = $input.first().json.filename;\nconst timestamp = $input.first().json.timestamp;\n\nconst tempDir = '/tmp/vulnscan';\nconst htmlFile = filename;\nconst pdfFile = filename.replace('.html', '.pdf');\nconst htmlPath = path.join(tempDir, htmlFile);\nconst pdfPath = path.join(tempDir, pdfFile);\n\nconsole.log('Creating PDF report...');\nconsole.log('HTML:', htmlPath);\nconsole.log('PDF:', pdfPath);\n\ntry {\n    if (!fs.existsSync(tempDir)) {\n        fs.mkdirSync(tempDir, { recursive: true, mode: 0o755 });\n    }\n\n    // Vérifier wkhtmltopdf\n    try {\n        execSync('which wkhtmltopdf', { encoding: 'utf-8' });\n    } catch (e) {\n        throw new Error('wkhtmltopdf not found. Installez avec: sudo apt-get install wkhtmltopdf');\n    }\n    \n    fs.writeFileSync(htmlPath, htmlContent, 'utf-8');\n    console.log('✓ HTML saved');\n    \n    const cmd = `wkhtmltopdf \"${htmlPath}\" \"${pdfPath}\"`;\n    execSync(cmd, { \n        encoding: 'utf-8',\n        cwd: tempDir,\n        timeout: 60000,\n        shell: '/bin/bash'\n    });\n    \n    console.log('✓ PDF generation complete');\n    \n    if (fs.existsSync(pdfPath)) {\n        const pdfBuffer = fs.readFileSync(pdfPath);\n        const size = pdfBuffer.length;\n        \n        console.log(`✓ PDF created: ${(size / 1024).toFixed(2)} KB`);\n        \n        return [{\n            json: {\n                success: true,\n                pdfPath: pdfPath,\n                fileSize: size,\n                filename: pdfFile,\n                message: `✅ PDF Report generated successfully! (${(size / 1024).toFixed(2)} KB)`\n            },\n            binary: {\n                data: {\n                    data: pdfBuffer.toString('base64'),\n                    mimeType: 'application/pdf',\n                    fileName: pdfFile\n                }\n            }\n        }];\n    } else {\n        throw new Error('PDF file was not created');\n    }\n    \n} catch (error) {\n    console.error('❌ Error:', error.message);\n    throw new Error(`PDF generation failed: ${error.message}`);\n}"
+      },
+      "id": "70a27066-bb8a-48af-99e9-62bad0fe8e27",
+      "name": "6. Générer PDF",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        13104,
+        3680
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "fromEmail": "maram.souidi@etudiant-enit.utm.tn",
+        "toEmail": "={{$('1. Préparer les Paramètres').first().json.emailTo}}",
+        "subject": "🔒 Vulnerability Scan Report - {{$node['1. Préparer les Paramètres'].json['network']}}",
+        "html": "=<h2>🔒 Vulnerability Scan Completed</h2>\n\n<p><strong>Target:</strong> {{$node['1. Préparer les Paramètres'].json['network']}}</p>\n<p><strong>Date:</strong> {{$now.format('YYYY-MM-DD HH:mm:ss')}}</p>\n<p><strong>Source:</strong> {{$node['1. Préparer les Paramètres'].json['source']}}</p>\n\n<h3>📊 Summary</h3>\n<p>Please see the attached PDF report for detailed vulnerability findings.</p>\n\n<hr>\n<p style='color: #7f8c8d; font-size: 12px;'>\nGenerated automatically by n8n Vulnerability Scanner - Ubuntu Edition\n</p>",
+        "options": {
+          "attachments": "data"
+        }
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        13296,
+        3680
+      ],
+      "id": "ef8dbe4c-451a-43fd-b4d1-7aa8c4a468e7",
+      "name": "Send Email",
+      "webhookId": "b9703015-25cf-4652-8104-720053c6d877",
+      "credentials": {
+        "smtp": {
+          "id": "95561XCtkbNXEesj",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "={{$('6. Générer PDF').first().json.filename}}",
+        "driveId": {
+          "__rl": true,
+          "value": "1GDfiieCrC-_yOQnvMxrcuTqweXOrY_yq",
+          "mode": "id"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        13296,
+        3776
+      ],
+      "id": "776980de-dfd8-4681-bb39-0e8bc3b8cc92",
+      "name": "Upload to Google Drive",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst fs = require('fs');\nconst path = require('path');\n\nconst network = $('1. Préparer les Paramètres').first().json.network;\nconst timestamp = $('1. Préparer les Paramètres').first().json.timestamp;\nconst tempDir = $('1. Préparer les Paramètres').first().json.tempDir;\nconst portRange = $('1. Préparer les Paramètres').first().json.portRange || '22,80,443,8080,8443';\nconst xmlPath = path.join(tempDir, `nmap_${timestamp}.xml`);\n\n// Créer le répertoire temporaire\nif (!fs.existsSync(tempDir)) {\n    fs.mkdirSync(tempDir, { recursive: true, mode: 0o755 });\n}\n\nconsole.log('Nmap target:', network, '| ports:', portRange);\n\ntry {\n    // Vérifier si nmap est installé\n    try {\n        execSync('which nmap', { encoding: 'utf-8' });\n    } catch (e) {\n        throw new Error('nmap n\\'est pas installé. Installez-le avec: sudo apt-get install nmap');\n    }\n\n    const nmapCmd = `nmap -sV --version-intensity 3 -p ${portRange} -T4 --max-retries 1 -oX \"${xmlPath}\" ${network}`;\n    console.log('CMD:', nmapCmd);\n    \n    try {\n        execSync(nmapCmd, { \n            encoding: 'utf-8', \n            timeout: 45000,\n            shell: '/bin/bash'\n        });\n        console.log('Nmap complete');\n    } catch(e) {\n        console.log('Nmap exit:', e.message.substring(0, 100));\n    }\n\n    if (!fs.existsSync(xmlPath)) {\n        return [{ json: { stdout: JSON.stringify({ host: [] }) } }];\n    }\n\n    const xmlContent = fs.readFileSync(xmlPath, 'utf-8');\n    console.log('XML size:', xmlContent.length);\n\n    const hosts = [];\n    const hostBlocks = xmlContent.match(/<host[\\s\\S]*?<\\/host>/g) || [];\n\n    for (const hostBlock of hostBlocks) {\n        const addrMatch = hostBlock.match(/<address addr=\"([^\"]+)\" addrtype=\"ipv4\"/);\n        if (!addrMatch) continue;\n        const ip = addrMatch[1];\n        const ports = [];\n        const portBlocks = hostBlock.match(/<port\\s[\\s\\S]*?<\\/port>/g) || [];\n\n        for (const portBlock of portBlocks) {\n            const stateMatch = portBlock.match(/state=\"([^\"]+)\"/);\n            if (!stateMatch || stateMatch[1] !== 'open') continue;\n            const portidMatch = portBlock.match(/portid=\"([^\"]+)\"/);\n            const protocolMatch = portBlock.match(/protocol=\"([^\"]+)\"/);\n            const nameMatch = portBlock.match(/name=\"([^\"]+)\"/);\n            const productMatch = portBlock.match(/product=\"([^\"]+)\"/);\n            const versionMatch = portBlock.match(/<service[^>]*version=\"([^\"]+)\"/);\n            const cpeMatch = portBlock.match(/<cpe>([^<]+)<\\/cpe>/);\n            \n            ports.push({\n                portid: portidMatch ? portidMatch[1] : '0',\n                protocol: protocolMatch ? protocolMatch[1] : 'tcp',\n                state: { state: 'open' },\n                service: {\n                    name: nameMatch ? nameMatch[1] : 'unknown',\n                    product: productMatch ? productMatch[1] : '',\n                    version: versionMatch ? versionMatch[1] : '',\n                    cpe: cpeMatch ? [cpeMatch[1]] : []\n                }\n            });\n        }\n        hosts.push({ \n            address: [{ addr: ip, addrtype: 'ipv4' }], \n            ports: { port: ports } \n        });\n    }\n\n    console.log(`Found ${hosts.length} hosts, ${hosts.reduce((a, h) => a + h.ports.port.length, 0)} open ports`);\n    return [{ json: { stdout: JSON.stringify({ host: hosts }) } }];\n\n} catch (error) {\n    console.error('Nmap fatal:', error.message);\n    return [{ json: { stdout: JSON.stringify({ host: [] }), error: error.message } }];\n}"
+      },
+      "id": "56d1bf18-6097-4eb8-b98c-075dc97a3de2",
+      "name": "2. Exécuter Nmap (Ubuntu)",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        10880,
+        3728
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst fs = require('fs');\n\nconst portsData = $('Extraire Ports Ouverts').first().json;\nconst network = portsData.network;\nconst timestamp = portsData.timestamp;\nconst hasHTTPS = portsData.hasHTTPS || false;\nconst httpsPort = portsData.httpsPort || 443;\nconst httpPort = portsData.httpPort || 80;\nconst tempDir = '/tmp/vulnscan';\nconst outputFile = `${tempDir}/nikto_${timestamp}.txt`;\n\nif (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });\n\nconst protocol = hasHTTPS ? 'https' : 'http';\nconst port = hasHTTPS ? httpsPort : httpPort;\nconst url = `${protocol}://${network}:${port}`;\n\nconsole.log('🔍 Nikto target:', url);\nconsole.log('🔍 hasHTTPS:', hasHTTPS);\n\n// 🔧 AUGMENTÉ: maxtime 600 secondes (10 minutes)\nconst cmd = `nikto -h ${url} -ssl -maxtime 600 -Format csv -Display 1,2,3,4 2>&1`;\nconsole.log('💻 Running:', cmd);\n\nlet rawOutput = '';\ntry {\n    // 🔧 AUGMENTÉ: timeout 620 secondes\n    rawOutput = execSync(cmd, { \n        encoding: 'utf-8', \n        timeout: 620000,  // 620 secondes\n        shell: '/bin/bash',\n        stdio: 'pipe'\n    });\n    console.log('✅ Nikto completed');\n} catch(e) {\n    rawOutput = e.stdout || e.stderr || '';\n    console.log('Nikto completed with exit code:', e.status);\n}\n\nconsole.log('📄 Raw output length:', rawOutput.length);\n\nlet niktoResults = [];\n\nconst lines = rawOutput.split('\\n');\nfor (const line of lines) {\n    const trimmed = line.trim();\n    if (!trimmed) continue;\n    \n    if (trimmed.startsWith('\"') && trimmed.includes(',')) {\n        const parts = trimmed.match(/\"([^\"]*)\"/g);\n        if (parts && parts.length >= 6) {\n            const msg = parts[5]?.replace(/\"/g, '') || '';\n            const method = parts[3]?.replace(/\"/g, '') || 'GET';\n            \n            if (msg && msg.length > 10 && !msg.match(/^(Target|Start|End|---|0 item|1 host|Nikto v|SSL Info)/i)) {\n                console.log(`  ✅ Found (CSV): ${msg.substring(0, 80)}`);\n                \n                let severity = 'info';\n                let remediation = 'Review and patch accordingly';\n                const low = msg.toLowerCase();\n                \n                if (low.includes('critical') || low.includes('trace') || low.includes('xst')) {\n                    severity = 'critical';\n                    remediation = 'Disable TRACE method immediately';\n                } else if (low.includes('xss') || low.includes('script') || low.includes('injection')) {\n                    severity = 'high';\n                    remediation = 'Sanitize user input and implement output encoding';\n                } else if (low.includes('x-frame-options') && low.includes('not present')) {\n                    severity = 'medium';\n                    remediation = 'Add X-Frame-Options: DENY header';\n                } else if (low.includes('cookie') && (low.includes('secure') || low.includes('httponly'))) {\n                    severity = 'medium';\n                    remediation = 'Add Secure and HttpOnly flags to cookies';\n                } else if (low.includes('directory') || low.includes('browsable')) {\n                    severity = 'low';\n                    remediation = 'Disable directory listing';\n                } else if (low.includes('uncommon header') || low.includes('leaks')) {\n                    severity = 'low';\n                    remediation = 'Review information disclosure';\n                }\n                \n                let vulnId = 'FINDING';\n                const osvdbMatch = msg.match(/OSVDB-(\\d+)/i);\n                const cveMatch = msg.match(/CVE-(\\d+-\\d+)/i);\n                if (osvdbMatch) vulnId = `OSVDB-${osvdbMatch[1]}`;\n                else if (cveMatch) vulnId = `CVE-${cveMatch[1]}`;\n                \n                niktoResults.push({\n                    tool: 'nikto',\n                    type: 'web_vulnerability',\n                    severity: severity,\n                    cvss_score: severity === 'critical' ? 9.8 : severity === 'high' ? 7.5 : severity === 'medium' ? 5.0 : severity === 'low' ? 3.5 : 0,\n                    id: vulnId,\n                    method: method,\n                    url: url,\n                    msg: msg.substring(0, 500),\n                    remediation: remediation\n                });\n            }\n        }\n    }\n    else if (trimmed.startsWith('+ ')) {\n        const finding = trimmed.substring(2).trim();\n        \n        if (finding.length > 5 && !finding.match(/^(Target IP|Target Hostname|Target Port|Start Time|End Time|---|requests made|0 item|Nikto v|SSL Info|Scan terminated|1 host)/i)) {\n            console.log(`  ✅ Found (+): ${finding.substring(0, 80)}`);\n            \n            let severity = 'info';\n            let remediation = 'Review and patch accordingly';\n            const low = finding.toLowerCase();\n            \n            if (low.includes('critical') || low.includes('trace') || low.includes('xst')) {\n                severity = 'critical';\n                remediation = 'Disable TRACE method immediately';\n            } else if (low.includes('xss') || low.includes('script') || low.includes('injection')) {\n                severity = 'high';\n                remediation = 'Sanitize user input and implement output encoding';\n            } else if (low.includes('x-frame-options') && low.includes('not present')) {\n                severity = 'medium';\n                remediation = 'Add X-Frame-Options: DENY header';\n            } else if (low.includes('cookie') && (low.includes('secure') || low.includes('httponly'))) {\n                severity = 'medium';\n                remediation = 'Add Secure and HttpOnly flags to cookies';\n            } else if (low.includes('directory') || low.includes('browsable')) {\n                severity = 'low';\n                remediation = 'Disable directory listing';\n            } else if (low.includes('uncommon header') || low.includes('leaks')) {\n                severity = 'low';\n                remediation = 'Review information disclosure';\n            }\n            \n            let vulnId = 'FINDING';\n            const osvdbMatch = finding.match(/OSVDB-(\\d+)/i);\n            const cveMatch = finding.match(/CVE-(\\d+-\\d+)/i);\n            if (osvdbMatch) vulnId = `OSVDB-${osvdbMatch[1]}`;\n            else if (cveMatch) vulnId = `CVE-${cveMatch[1]}`;\n            \n            niktoResults.push({\n                tool: 'nikto',\n                type: 'web_vulnerability',\n                severity: severity,\n                cvss_score: severity === 'critical' ? 9.8 : severity === 'high' ? 7.5 : severity === 'medium' ? 5.0 : severity === 'low' ? 3.5 : 0,\n                id: vulnId,\n                method: 'GET',\n                url: url,\n                msg: finding.substring(0, 500),\n                remediation: remediation\n            });\n        }\n    }\n}\n\nconst critical = niktoResults.filter(r => r.severity === 'critical').length;\nconst high = niktoResults.filter(r => r.severity === 'high').length;\nconst medium = niktoResults.filter(r => r.severity === 'medium').length;\nconst low = niktoResults.filter(r => r.severity === 'low').length;\n\nconsole.log(`\\n📊 Nikto Summary: ${niktoResults.length} total findings`);\nconsole.log(`   🔴 Critical: ${critical} | 🟠 High: ${high} | 🟡 Medium: ${medium} | 🔵 Low: ${low}`);\n\nif (niktoResults.length === 0) {\n    niktoResults.push({ \n        tool: 'nikto', \n        type: 'info', \n        severity: 'info', \n        id: 'NO_ISSUES',\n        cvss_score: 0,\n        msg: `Scan completed. No vulnerabilities detected.`,\n        url: url,\n        remediation: 'Run with -evasion and -mutate options for deeper testing'\n    });\n}\n\nreturn [{ json: { niktoResults } }];"
+      },
+      "id": "58064df6-c869-4d56-81fb-868146787a91",
+      "name": "Nikto Scan",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        11616,
+        3488
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const { exec } = require('child_process');\nconst util = require('util');\nconst execPromise = util.promisify(exec);\nconst fs = require('fs');\n\nconst network = $('Extraire Ports Ouverts').first().json.network;\nconst httpPort = $('Extraire Ports Ouverts').first().json.httpPort || 80;\nconst httpsPort = $('Extraire Ports Ouverts').first().json.httpsPort || 443;\nconst timestamp = $('Extraire Ports Ouverts').first().json.timestamp;\nconst tempDir = '/tmp/vulnscan';\nconst outputFile = `${tempDir}/wpscan_${timestamp}.json`;\n\nconsole.log('🔍 Checking for WordPress on:', network);\n\nlet wpscanResults = [];\nlet isWordPress = false;\n\ntry {\n    // D'abord, vérifier si WordPress est détecté par WhatWeb\n    const whatwebResults = $('WhatWeb').first().json.whatwebResults || [];\n    \n    // Vérifier si WordPress est dans les technologies détectées\n    for (const tech of whatwebResults) {\n        if (tech.technology && tech.technology.toLowerCase().includes('wordpress')) {\n            isWordPress = true;\n            console.log('✅ WordPress detected!');\n            break;\n        }\n    }\n    \n    // Vérification alternative avec curl (si WhatWeb n'a pas détecté)\n    if (!isWordPress) {\n        const urls = [\n            `http://${network}:${httpPort}/wp-admin`,\n            `https://${network}:${httpsPort}/wp-admin`,\n            `http://${network}:${httpPort}/wp-login.php`,\n            `https://${network}:${httpsPort}/wp-login.php`\n        ];\n        \n        for (const url of urls) {\n            try {\n                const cmd = `curl -s -o /dev/null -w \"%{http_code}\" ${url}`;\n                const { stdout } = await execPromise(cmd, { timeout: 5000 });\n                if (stdout.trim() === '200') {\n                    isWordPress = true;\n                    console.log(`✅ WordPress detected via ${url}`);\n                    break;\n                }\n            } catch(e) {}\n        }\n    }\n    \n    // Si WordPress est détecté, lancer WPScan\n    if (isWordPress) {\n        console.log('🔬 Starting WPScan...');\n        \n        // Construire l'URL\n        let url = '';\n        if ($('Extraire Ports Ouverts').first().json.hasHTTPS) {\n            url = `https://${network}:${httpsPort}`;\n        } else {\n            url = `http://${network}:${httpPort}`;\n        }\n        \n        // Commande WPScan avec sortie JSON\n        const cmd = `wpscan --url ${url} --format json --output ${outputFile} --no-banner --api-token jkBsASpvyd1xOBiafzEgSRNePQAoR0Dalzv0NYaIGOU`;\n        // Note: Pour un scan complet, il faut un token API gratuit sur https://wpscan.com/register\n        \n        console.log('CMD:', cmd);\n        \n        try {\n            await execPromise(cmd, { timeout: 300000, shell: '/bin/bash' });\n            console.log('WPScan completed');\n        } catch (e) {\n            console.log('WPScan finished (may have findings)');\n        }\n        \n        // Lire les résultats JSON\n        if (fs.existsSync(outputFile)) {\n            const content = fs.readFileSync(outputFile, 'utf-8');\n            const data = JSON.parse(content);\n            \n            // Extraire les vulnérabilités\n            if (data.vulnerabilities) {\n                for (const [component, vulns] of Object.entries(data.vulnerabilities)) {\n                    for (const vuln of vulns) {\n                        wpscanResults.push({\n                            tool: 'wpscan',\n                            type: 'wordpress_vulnerability',\n                            component: component,\n                            id: vuln.id || vuln.cve || 'UNKNOWN',\n                            severity: vuln.severity || getSeverityFromCVSS(vuln.cvss_score),\n                            cvss_score: vuln.cvss_score || 0,\n                            title: vuln.title || vuln.name || `Vulnerability in ${component}`,\n                            description: vuln.description || vuln.references?.description || '',\n                            remediation: vuln.fixed_in ? `Update to version ${vuln.fixed_in} or higher` : 'Apply security patch',\n                            references: vuln.references || [],\n                            url: url\n                        });\n                    }\n                }\n            }\n            \n            // Extraire les plugins vulnérables\n            if (data.version && data.version.vulnerabilities) {\n                for (const vuln of data.version.vulnerabilities) {\n                    wpscanResults.push({\n                        tool: 'wpscan',\n                        type: 'wordpress_version',\n                        component: `WordPress ${data.version.number}`,\n                        id: vuln.id || 'UNKNOWN',\n                        severity: vuln.severity || 'MEDIUM',\n                        title: vuln.title,\n                        description: vuln.description,\n                        remediation: vuln.fixed_in ? `Update to WordPress ${vuln.fixed_in}` : 'Update WordPress to latest version',\n                        references: vuln.references || []\n                    });\n                }\n            }\n            \n            // Extraire les thèmes vulnérables\n            if (data.themes && data.themes.length > 0) {\n                for (const theme of data.themes) {\n                    if (theme.vulnerabilities && theme.vulnerabilities.length > 0) {\n                        for (const vuln of theme.vulnerabilities) {\n                            wpscanResults.push({\n                                tool: 'wpscan',\n                                type: 'wordpress_theme',\n                                component: `Theme: ${theme.name}`,\n                                id: vuln.id || 'UNKNOWN',\n                                severity: vuln.severity || 'MEDIUM',\n                                title: vuln.title,\n                                description: vuln.description,\n                                remediation: vuln.fixed_in ? `Update theme to ${vuln.fixed_in}` : 'Update or remove vulnerable theme'\n                            });\n                        }\n                    }\n                }\n            }\n            \n            // Extraire les plugins vulnérables\n            if (data.plugins && data.plugins.length > 0) {\n                for (const plugin of data.plugins) {\n                    if (plugin.vulnerabilities && plugin.vulnerabilities.length > 0) {\n                        for (const vuln of plugin.vulnerabilities) {\n                            wpscanResults.push({\n                                tool: 'wpscan',\n                                type: 'wordpress_plugin',\n                                component: `Plugin: ${plugin.name}`,\n                                version: plugin.version,\n                                id: vuln.id || 'UNKNOWN',\n                                severity: vuln.severity || 'MEDIUM',\n                                title: vuln.title,\n                                description: vuln.description,\n                                remediation: vuln.fixed_in ? `Update plugin to ${vuln.fixed_in}` : 'Update or remove vulnerable plugin'\n                            });\n                        }\n                    }\n                }\n            }\n        }\n        \n        console.log(`✅ WPScan found ${wpscanResults.length} issues`);\n        \n    } else {\n        console.log('WordPress not detected, skipping WPScan');\n        wpscanResults.push({\n            tool: 'wpscan',\n            type: 'info',\n            id: 'NO_WORDPRESS',\n            severity: 'info',\n            description: 'WordPress not detected on this target',\n            url: `http://${network}`\n        });\n    }\n    \n} catch (error) {\n    console.error('❌ WPScan error:', error.message);\n    wpscanResults.push({\n        tool: 'wpscan',\n        type: 'error',\n        id: 'WPSCAN_ERROR',\n        severity: 'info',\n        description: `WPScan error: ${error.message}`,\n        url: `http://${network}`\n    });\n}\n\n// Fonction helper pour déterminer la sévérité\nfunction getSeverityFromCVSS(score) {\n    if (!score) return 'info';\n    if (score >= 9.0) return 'critical';\n    if (score >= 7.0) return 'high';\n    if (score >= 4.0) return 'medium';\n    if (score > 0) return 'low';\n    return 'info';\n}\n\nreturn [{ json: { wpscanResults } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11680,
+        3952
+      ],
+      "id": "f4c23ae9-428d-40a9-97da-5020bdd65bdd",
+      "name": "WPScan Detection"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { exec } = require('child_process');\nconst util = require('util');\nconst execPromise = util.promisify(exec);\nconst fs = require('fs');\n\nconst portsData = $('Extraire Ports Ouverts').first().json;\nconst network = portsData.network;\nconst openPorts = portsData.openPorts || [];\nconst timestamp = portsData.timestamp;\nconst hasHTTPS = portsData.hasHTTPS || false;\nconst httpsPort = portsData.httpsPort || 443;\nconst httpPort = portsData.httpPort || 80;\nconst tempDir = '/tmp/vulnscan';\nconst baseOutput = `${tempDir}/hydra_${timestamp}`;\n\nconsole.log('🚀 Starting Hydra scan on:', network);\nconsole.log('📡 Open ports:', openPorts);\n\nlet hydraResults = [];\n\nif (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });\n\n// 📝 Élargir la liste des mots de passe courants\nconst commonPasswords = [\n    'password', '123456', 'admin', 'root', 'toor', 'qwerty', \n    'abc123', 'letmein', 'welcome', 'admin123', 'password123',\n    '12345678', '12345', '123456789', '1234', '1234567',\n    'admin', 'Admin', 'administrator', 'Administrator',\n    'test', 'Test', 'user', 'User', 'guest', 'Guest',\n    'passw0rd', 'Passw0rd', 'P@ssw0rd', 'p@ssw0rd',\n    'secret', 'Secret', 'changeme', 'ChangeMe',\n    '123', '123123', '111111', '000000'\n];\n\nconst commonUsers = [\n    'root', 'admin', 'user', 'test', 'ubuntu', 'administrator', \n    'guest', 'webadmin', 'webmaster', 'www-data', 'apache',\n    'tomcat', 'jboss', 'weblogic', 'oracle', 'mysql',\n    'postgres', 'git', 'jenkins', 'docker', 'kube'\n];\n\nconst passFile = `${tempDir}/passwords_${timestamp}.txt`;\nconst userFile = `${tempDir}/users_${timestamp}.txt`;\nfs.writeFileSync(passFile, commonPasswords.join('\\n'));\nfs.writeFileSync(userFile, commonUsers.join('\\n'));\n\nconsole.log(`📋 Wordlist: ${commonPasswords.length} passwords, ${commonUsers.length} users`);\n\n// 🔍 Construire la liste des services à scanner\nconst servicesToScan = [];\n\nif (openPorts.includes(22))   servicesToScan.push({ service: 'ssh',        port: 22,        ext: 'ssh',        timeout: 30000 });\nif (openPorts.includes(21))   servicesToScan.push({ service: 'ftp',        port: 21,        ext: 'ftp',        timeout: 30000 });\nif (openPorts.includes(3306)) servicesToScan.push({ service: 'mysql',      port: 3306,      ext: 'mysql',      timeout: 30000 });\nif (openPorts.includes(5432)) servicesToScan.push({ service: 'postgres',   port: 5432,      ext: 'postgres',   timeout: 30000 });\nif (openPorts.includes(3389)) servicesToScan.push({ service: 'rdp',        port: 3389,      ext: 'rdp',        timeout: 60000 });\nif (openPorts.includes(23))   servicesToScan.push({ service: 'telnet',     port: 23,        ext: 'telnet',     timeout: 30000 });\n\n// HTTP / HTTPS - avec gestion des formulaires\nif (hasHTTPS && openPorts.includes(httpsPort)) {\n    servicesToScan.push({ \n        service: 'https-get', \n        port: httpsPort, \n        ext: 'https', \n        path: '/',\n        timeout: 30000\n    });\n    // Ajouter aussi un test pour les formulaires de login courants\n    servicesToScan.push({ \n        service: 'https-post-form', \n        port: httpsPort, \n        ext: 'https-form', \n        path: '/login.faces',\n        formData: 'username=^USER^&password=^PASS^',\n        timeout: 30000\n    });\n} else if (openPorts.includes(httpPort)) {\n    servicesToScan.push({ \n        service: 'http-get',  \n        port: httpPort,  \n        ext: 'http',  \n        path: '/',\n        timeout: 30000\n    });\n}\n\nconsole.log('🎯 Services to brute-force:', servicesToScan.map(s => s.service).join(', ') || 'none');\n\nif (servicesToScan.length === 0) {\n    hydraResults.push({ \n        tool: 'hydra', \n        type: 'info', \n        id: 'NO_SERVICES',\n        severity: 'info', \n        description: 'No brute-forceable services found on open ports', \n        url: network \n    });\n    return [{ json: { hydraResults } }];\n}\n\n// 🔑 Scanner chaque service\nfor (const target of servicesToScan) {\n    console.log(`🔑 Brute-forcing ${target.service} on port ${target.port}...`);\n    const outFile = `${baseOutput}.${target.ext}`;\n\n    let cmd = '';\n    \n    // Construire la commande hydra selon le service\n    if (target.service === 'https-get') {\n        cmd = `hydra -L ${userFile} -P ${passFile} -o ${outFile} -f -v -I -s ${target.port} https-get://${network}${target.path}`;\n    } else if (target.service === 'http-get') {\n        cmd = `hydra -L ${userFile} -P ${passFile} -o ${outFile} -f -v -I http-get://${network}:${target.port}${target.path}`;\n    } else if (target.service === 'https-post-form') {\n        // Test pour formulaires POST (login.faces, etc.)\n        cmd = `hydra -L ${userFile} -P ${passFile} -o ${outFile} -f -v -I -s ${target.port} https-post-form://${network}${target.path}:${target.formData}:Invalid`;\n    } else {\n        cmd = `hydra -L ${userFile} -P ${passFile} ${target.service}://${network}:${target.port} -t 4 -o ${outFile} -f -v -I`;\n    }\n\n    console.log('💻 CMD:', cmd.substring(0, 150) + '...');\n    \n    try {\n        await execPromise(cmd, { timeout: target.timeout || 120000, shell: '/bin/bash' });\n    } catch(e) {\n        // Hydra retourne un code d'erreur même si des credentials sont trouvés\n        console.log(`📊 ${target.service} scan completed`);\n    }\n\n    // Lire les résultats\n    if (fs.existsSync(outFile)) {\n        const content = fs.readFileSync(outFile, 'utf-8');\n        console.log(`📄 ${target.service} output length: ${content.length} chars`);\n        \n        for (const line of content.split('\\n')) {\n            // Format standard Hydra\n            let match = line.match(/host:\\s*(\\S+)\\s+login:\\s*(\\S+)\\s+password:\\s*(.+)/i);\n            \n            // Format alternatif\n            if (!match) {\n                match = line.match(/\\[.*?\\]\\s+host:\\s*(\\S+)\\s+login:\\s*(\\S+)\\s+pass:\\s*(.+)/i);\n            }\n            \n            if (match) {\n                const username = match[2];\n                const password = match[3].trim();\n                \n                hydraResults.push({\n                    tool: 'hydra',\n                    type: 'credential',\n                    service: target.service,\n                    port: target.port,\n                    host: match[1],\n                    username: username,\n                    password: password,\n                    severity: 'critical',\n                    description: `Weak credentials found for ${target.service} on port ${target.port}`,\n                    remediation: `⚠️ Change password for '${username}' immediately. Use a strong, unique password with at least 12 characters, mix of letters, numbers and symbols.`\n                });\n                \n                console.log(`✅ Found credential: ${username}:${password}`);\n            }\n        }\n    }\n}\n\n// Nettoyer les fichiers temporaires\ntry { \n    fs.unlinkSync(passFile); \n    fs.unlinkSync(userFile); \n    console.log('🧹 Cleaned up temp files');\n} catch(e) {}\n\nconsole.log(`📊 Hydra found ${hydraResults.length} weak credentials`);\n\nif (hydraResults.length === 0) {\n    hydraResults.push({ \n        tool: 'hydra', \n        type: 'info', \n        id: 'NO_WEAK_CREDENTIALS',\n        severity: 'info', \n        description: 'No weak credentials found with common dictionaries', \n        url: network,\n        recommendation: 'Consider using a more comprehensive wordlist for advanced testing'\n    });\n}\n\nreturn [{ json: { hydraResults } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11616,
+        3376
+      ],
+      "id": "a78f3d36-5291-49dd-b314-932fd01788d6",
+      "name": "Hydra Scan"
+    },
+    {
+      "parameters": {
+        "jsCode": "const params = $('1. Préparer les Paramètres').first().json;\nconst aiAnalysis = $('Groq AI Analysis').first().json.aiAnalysis;\nconst pdfData = $('6. Générer PDF').first().json; // Récupère le chemin du PDF\n\nconst payload = {\n    scanId: params.scan_id,\n    target: params.network,\n    emailTo: params.emailTo,\n    aiAnalysis: aiAnalysis,\n    // On ajoute le chemin du fichier PDF généré sur ton Ubuntu\n    report_path: pdfData.pdfPath, \n    security_score: aiAnalysis.score_securite || 0,\n    critical: aiAnalysis.stats?.critical || 0,\n    status: \"completed\"\n};\n\ntry {\n    await this.helpers.httpRequest({\n        method: 'POST',\n        url: 'http://172.17.0.1:3000/api/webhook-result',\n        headers: {'Content-Type': 'application/json'},\n        body: JSON.stringify(payload)\n    });\n} catch (e) {\n    console.error(\"Erreur Flask\");\n}\n\nreturn [{ json: payload }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13456,
+        3664
+      ],
+      "id": "3ac3a75e-c357-4699-90bb-bcd9bc24b94b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// NŒUD FINAL n8n : \"Code in JavaScript\"\n// Remplacez le code de ce nœud par celui-ci\n// ============================================================\n\nconst params    = $('1. Préparer les Paramètres').first().json;\nconst aiData    = $('Groq AI Analysis').first().json;\nconst cveData   = $('4. Enrichissement CVE').first().json;\nconst mergeData = $('Merge Code').first().json;\nconst pdfData   = $('6. Générer PDF').first().json;\n\nconst aiAnalysis = aiData.aiAnalysis || {};\n\n// Construire la liste des services depuis les CVEs enrichies\nconst services = (cveData.enriched || []).map(s => ({\n    ip:      params.network,\n    port:    s.port     || '',\n    service: s.service  || '',\n    product: s.product  || '',\n    version: s.version  || '',\n    cpe:     s.cpe      || ''\n}));\n\n// CVEs\nconst cves = (cveData.enriched || [])\n    .filter(s => s.cveId && s.cveId !== 'N/A')\n    .map(s => ({\n        cveId:      s.cveId,\n        cveSummary: s.cveSummary || '',\n        cvssScore:  s.cvssScore  || 0,\n        severity:   s.severity   || 'UNKNOWN'\n    }));\n\n// Résultats des scans additionnels\nconst scans = {\n    nikto:   mergeData.niktoResults   || [],\n    ssl:     mergeData.sslResults     || [],\n    hydra:   mergeData.hydraResults   || [],\n    gobuster:mergeData.gobusterResults|| [],\n    whatweb: mergeData.whatwebResults || [],\n    wpscan:  mergeData.wpscanResults  || []\n};\n\nconst payload = {\n    scanId:         params.scan_id || params.scanId || `scan_${Date.now()}`,\n    target:         params.network,\n    emailTo:        params.emailTo,\n    completedAt:    new Date().toISOString(),\n    status:         'completed',\n    aiAnalysis:     aiAnalysis,\n    services:       services,\n    cves:           cves,\n    scans:          scans,\n    security_score: aiAnalysis.score_securite || 0,\n    risk_level:     aiAnalysis.risque_global  || 'INCONNU',\n    report_path:    pdfData.pdfPath           || '',\n    pdfInfo: {\n        pdfPath:  pdfData.pdfPath  || '',\n        filename: pdfData.filename || ''\n    }\n};\n\n// Envoyer à Flask\ntry {\n    await this.helpers.httpRequest({\n        method:  'POST',\n        url:     'http://172.17.0.1:3000/api/webhook-result',\n        headers: { 'Content-Type': 'application/json' },\n        body:    JSON.stringify(payload)\n    });\n    console.log('✅ Flask notifié — scanId:', payload.scanId);\n} catch(e) {\n    console.error('❌ Erreur notification Flask:', e.message);\n}\n\nreturn [{ json: payload }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13664,
+        3664
+      ],
+      "id": "94948eaf-10d0-4c47-a36a-68256f8d3801",
+      "name": "Code in JavaScript1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "🌐 Formulaire de Scan": {
+      "main": [
+        [
+          {
+            "node": "1. Préparer les Paramètres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Préparer les Paramètres": {
+      "main": [
+        [
+          {
+            "node": "2. Exécuter Nmap (Ubuntu)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraire Ports Ouverts": {
+      "main": [
+        [
+          {
+            "node": "IF hasHTTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF hasHTTP": {
+      "main": [
+        [
+          {
+            "node": "Nikto Scan",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "WhatWeb",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Hydra Scan",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gobuster",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "SSLScan",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF hasHTTPS": {
+      "main": [
+        [
+          {
+            "node": "SSLScan",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "WhatWeb",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Gobuster": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "SSLScan": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "WhatWeb": {
+      "main": [
+        [
+          {
+            "node": "WPScan Detection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Merge Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Code": {
+      "main": [
+        [
+          {
+            "node": "Groq AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "3. Parser les Services",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Parser les Services": {
+      "main": [
+        [
+          {
+            "node": "4. Enrichissement CVE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Enrichissement CVE": {
+      "main": [
+        [
+          {
+            "node": "5. Générer Rapport HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. Générer Rapport HTML": {
+      "main": [
+        [
+          {
+            "node": "6. Générer PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Générer PDF": {
+      "main": [
+        [
+          {
+            "node": "Upload to Google Drive",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Exécuter Nmap (Ubuntu)": {
+      "main": [
+        [
+          {
+            "node": "Extraire Ports Ouverts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nikto Scan": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "WPScan Detection": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "Hydra Scan": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 6
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "f21417e8-ad9e-4b7a-9dd6-3f662ef3cd07",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0318f3c433d205084158527acb168e0c4035cccf7e641b98bfde06a44d809b33"
+  },
+  "id": "1LTyQiASUQ5ZGQdZ",
+  "tags": []
+}

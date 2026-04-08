@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VULNSCAN - Security Scanner</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+            background: linear-gradient(135deg, #0a0c10 0%, #111418 100%);
+            color: #f1f5f9;
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        .header {
+            text-align: center;
+            padding: 3rem 0;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+        }
+        .header h1 {
+            font-size: 3rem;
+            background: linear-gradient(135deg, #00d4ff 0%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header p { color: #94a3b8; margin-top: 1rem; }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin: 3rem 0;
+        }
+        .card {
+            background: rgba(19, 23, 29, 0.8);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s, border-color 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: #00d4ff;
+        }
+        .card i { font-size: 3rem; color: #00d4ff; margin-bottom: 1rem; }
+        .card h3 { margin-bottom: 0.5rem; }
+        .card p { color: #94a3b8; font-size: 0.9rem; }
+        .btn {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #00d4ff 0%, #8b5cf6 100%);
+            color: #0a0c10;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        .btn:hover { transform: scale(1.05); }
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            border-top: 1px solid rgba(0, 212, 255, 0.1);
+            color: #64748b;
+            margin-top: 3rem;
+        }
+        .status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #10b981;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔒 VULNSCAN</h1>
+            <p>Advanced Security Vulnerability Scanner</p>
+            <div style="margin-top: 1rem;">
+                <span class="status"></span>
+                <span style="font-size: 0.8rem;">API Online</span>
+            </div>
+        </div>
+        
+        <div class="cards">
+            <div class="card">
+                <i>🎯</i>
+                <h3>Launch Scan</h3>
+                <p>Start a new vulnerability scan on any target</p>
+                <a href="/new-scan" class="btn">Start Scanning</a>
+            </div>
+            <div class="card">
+                <i>📊</i>
+                <h3>Dashboard</h3>
+                <p>View scan results and security metrics</p>
+                <a href="/dashboard" class="btn">View Dashboard</a>
+            </div>
+            <div class="card">
+                <i>📜</i>
+                <h3>History</h3>
+                <p>Access all previous scan reports</p>
+                <a href="/history" class="btn">View History</a>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Powered by n8n + Groq AI | AgentSec v2.0</p>
+            <p style="font-size: 0.7rem; margin-top: 0.5rem;">
+                <a href="http://localhost:8501" style="color: #00d4ff;">Streamlit Interface</a> | 
+                <a href="http://localhost:5678" style="color: #00d4ff;">n8n Dashboard</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

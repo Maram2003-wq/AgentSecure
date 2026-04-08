@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentSec — Scanner de Vulnérabilités</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #0a0c10;
+  --bg2: #0f1117;
+  --bg3: #161b26;
+  --bg4: #1e2535;
+  --border: #1e2d40;
+  --border2: #2a3a50;
+  --accent: #00d4ff;
+  --accent2: #0095b3;
+  --green: #00ff88;
+  --green2: #00b860;
+  --red: #ff3d3d;
+  --orange: #ff8c00;
+  --yellow: #ffd600;
+  --text: #e2e8f0;
+  --text2: #8892a4;
+  --text3: #4a5568;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Syne', sans-serif;
+  --radius: 8px;
+  --radius-lg: 12px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-height:100vh;overflow-x:hidden;}
+
+/* SCANLINE EFFECT */
+body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,0.015) 2px,rgba(0,212,255,0.015) 4px);pointer-events:none;z-index:0;}
+
+/* SIDEBAR */
+.sidebar{position:fixed;left:0;top:0;width:260px;height:100vh;background:var(--bg2);border-right:1px solid var(--border);padding:0;z-index:100;display:flex;flex-direction:column;}
+.sidebar-logo{padding:24px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;}
+.logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.logo-text{font-size:18px;font-weight:800;letter-spacing:-0.5px;color:var(--text);}
+.logo-text span{color:var(--accent);}
+.sidebar-status{padding:16px 20px;border-bottom:1px solid var(--border);}
+.status-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius);background:var(--bg3);margin-bottom:8px;}
+.status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.status-dot.online{background:var(--green);box-shadow:0 0 8px var(--green);}
+.status-dot.offline{background:var(--red);box-shadow:0 0 8px var(--red);}
+.status-dot.checking{background:var(--yellow);animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+.status-label{font-size:12px;font-family:var(--font-mono);color:var(--text2);}
+.status-val{font-size:11px;font-family:var(--font-mono);color:var(--text3);margin-left:auto;}
+.sidebar-nav{padding:16px 20px;flex:1;}
+.nav-label{font-size:10px;font-family:var(--font-mono);color:var(--text3);text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius);cursor:pointer;transition:all 0.2s;margin-bottom:4px;font-size:13px;color:var(--text2);font-family:var(--font-mono);}
+.nav-item:hover,.nav-item.active{background:var(--bg4);color:var(--accent);border:1px solid var(--border2);}
+.nav-item.active{border-color:var(--accent2);}
+.nav-icon{font-size:16px;width:20px;text-align:center;}
+.sidebar-footer{padding:16px 20px;border-top:1px solid var(--border);}
+.version-badge{font-size:10px;font-family:var(--font-mono);color:var(--text3);background:var(--bg3);padding:4px 8px;border-radius:4px;border:1px solid var(--border);}
+
+/* MAIN */
+.main{margin-left:260px;min-height:100vh;padding:32px;position:relative;z-index:1;}
+
+/* HEADER */
+.page-header{margin-bottom:32px;}
+.page-title{font-size:28px;font-weight:800;color:var(--text);letter-spacing:-1px;margin-bottom:4px;}
+.page-title span{color:var(--accent);}
+.page-subtitle{font-size:13px;font-family:var(--font-mono);color:var(--text2);}
+.breadcrumb{font-size:11px;font-family:var(--font-mono);color:var(--text3);margin-bottom:8px;}
+.breadcrumb span{color:var(--accent);}
+
+/* SCAN FORM */
+.scan-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px;margin-bottom:28px;position:relative;overflow:hidden;}
+.scan-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--green),var(--accent));}
+.scan-card-title{font-size:13px;font-family:var(--font-mono);color:var(--accent);text-transform:uppercase;letter-spacing:2px;margin-bottom:20px;display:flex;align-items:center;gap:8px;}
+.form-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;}
+.form-group{display:flex;flex-direction:column;gap:6px;}
+.form-label{font-size:11px;font-family:var(--font-mono);color:var(--text2);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:6px;}
+.form-input{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;color:var(--text);font-family:var(--font-mono);font-size:13px;transition:all 0.2s;outline:none;}
+.form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,212,255,0.1);}
+.form-input::placeholder{color:var(--text3);}
+.scan-btn{width:100%;padding:14px;background:linear-gradient(90deg,var(--accent),var(--accent2));border:none;border-radius:var(--radius);color:#000;font-family:var(--font-mono);font-size:14px;font-weight:700;cursor:pointer;letter-spacing:1px;text-transform:uppercase;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:10px;}
+.scan-btn:hover{transform:translateY(-1px);box-shadow:0 8px 25px rgba(0,212,255,0.3);}
+.scan-btn:disabled{opacity:0.4;cursor:not-allowed;transform:none;box-shadow:none;}
+.scan-btn.scanning{background:linear-gradient(90deg,var(--bg4),var(--bg3));color:var(--accent);border:1px solid var(--accent);}
+.tool-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;}
+.chip{font-size:10px;font-family:var(--font-mono);padding:4px 10px;border-radius:20px;border:1px solid var(--border2);color:var(--text2);background:var(--bg3);}
+.chip.active{border-color:var(--accent);color:var(--accent);}
+
+/* PROGRESS */
+.progress-section{display:none;margin-bottom:28px;}
+.progress-section.visible{display:block;}
+.progress-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;}
+.progress-header{display:flex;align-items:center;justify-content:between;margin-bottom:16px;}
+.progress-title{font-size:13px;font-family:var(--font-mono);color:var(--accent);flex:1;}
+.progress-time{font-size:12px;font-family:var(--font-mono);color:var(--text3);}
+.progress-bar-wrap{background:var(--bg3);border-radius:4px;height:6px;margin-bottom:16px;overflow:hidden;}
+.progress-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:4px;transition:width 0.5s ease;width:0%;}
+.progress-steps{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;}
+.step{text-align:center;padding:8px 4px;border-radius:var(--radius);background:var(--bg3);border:1px solid var(--border);}
+.step.done{background:rgba(0,255,136,0.08);border-color:var(--green2);}
+.step.active{background:rgba(0,212,255,0.08);border-color:var(--accent);animation:borderPulse 1s infinite;}
+@keyframes borderPulse{0%,100%{border-color:var(--accent);}50%{border-color:var(--accent2);}}
+.step-icon{font-size:16px;margin-bottom:4px;}
+.step-name{font-size:9px;font-family:var(--font-mono);color:var(--text3);}
+.step.done .step-name{color:var(--green);}
+.step.active .step-name{color:var(--accent);}
+
+/* RESULTS */
+.results-section{display:none;}
+.results-section.visible{display:block;}
+.results-header{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 24px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden;}
+.results-header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--green),var(--accent));}
+.results-target{font-size:20px;font-weight:800;color:var(--text);}
+.results-meta{font-size:11px;font-family:var(--font-mono);color:var(--text3);margin-top:4px;}
+.results-meta span{color:var(--accent);}
+
+/* TABS */
+.tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--bg2);padding:6px;border-radius:var(--radius-lg);border:1px solid var(--border);}
+.tab{flex:1;padding:10px 8px;border-radius:var(--radius);cursor:pointer;transition:all 0.2s;font-size:11px;font-family:var(--font-mono);color:var(--text2);text-align:center;border:1px solid transparent;display:flex;align-items:center;justify-content:center;gap:6px;}
+.tab:hover{color:var(--text);background:var(--bg3);}
+.tab.active{background:var(--bg4);color:var(--accent);border-color:var(--border2);}
+.tab-content{display:none;}
+.tab-content.active{display:block;}
+
+/* METRIC CARDS */
+.metrics-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;}
+.metric{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;text-align:center;}
+.metric-val{font-size:28px;font-weight:800;font-family:var(--font-mono);margin-bottom:4px;}
+.metric-label{font-size:10px;font-family:var(--font-mono);color:var(--text3);text-transform:uppercase;letter-spacing:1px;}
+.metric.critical .metric-val{color:var(--red);}
+.metric.high .metric-val{color:var(--orange);}
+.metric.medium .metric-val{color:var(--yellow);}
+.metric.low .metric-val{color:var(--green);}
+.metric.info .metric-val{color:var(--accent);}
+.metric.score .metric-val{color:var(--text);}
+
+/* SCORE DISPLAY */
+.score-section{display:grid;grid-template-columns:200px 1fr 1fr;gap:20px;margin-bottom:24px;}
+.score-gauge{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;text-align:center;}
+.score-circle{width:120px;height:120px;margin:0 auto 12px;position:relative;}
+.score-circle svg{transform:rotate(-90deg);}
+.score-num{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:28px;font-weight:800;font-family:var(--font-mono);}
+.risk-badge{display:inline-block;padding:6px 16px;border-radius:4px;font-size:12px;font-family:var(--font-mono);font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-top:8px;}
+.risk-badge.critical{background:rgba(255,61,61,0.15);color:var(--red);border:1px solid var(--red);}
+.risk-badge.high{background:rgba(255,140,0,0.15);color:var(--orange);border:1px solid var(--orange);}
+.risk-badge.medium{background:rgba(255,214,0,0.15);color:var(--yellow);border:1px solid var(--yellow);}
+.risk-badge.low{background:rgba(0,255,136,0.15);color:var(--green);border:1px solid var(--green);}
+.info-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;}
+.info-card-title{font-size:11px;font-family:var(--font-mono);color:var(--accent);text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;}
+.info-text{font-size:13px;color:var(--text2);line-height:1.7;}
+
+/* VULN CARDS */
+.vuln-list{display:flex;flex-direction:column;gap:10px;}
+.vuln-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;}
+.vuln-header{padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:background 0.2s;}
+.vuln-header:hover{background:var(--bg3);}
+.severity-tag{font-size:9px;font-family:var(--font-mono);font-weight:700;padding:3px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:1px;flex-shrink:0;}
+.severity-tag.critical{background:rgba(255,61,61,0.2);color:var(--red);border:1px solid rgba(255,61,61,0.3);}
+.severity-tag.high{background:rgba(255,140,0,0.2);color:var(--orange);border:1px solid rgba(255,140,0,0.3);}
+.severity-tag.medium{background:rgba(255,214,0,0.2);color:var(--yellow);border:1px solid rgba(255,214,0,0.3);}
+.severity-tag.low{background:rgba(0,255,136,0.2);color:var(--green);border:1px solid rgba(0,255,136,0.3);}
+.vuln-title{font-size:13px;font-family:var(--font-mono);color:var(--text);flex:1;}
+.cvss-score{font-size:12px;font-family:var(--font-mono);color:var(--text3);margin-left:auto;}
+.vuln-arrow{font-size:12px;color:var(--text3);transition:transform 0.2s;}
+.vuln-item.open .vuln-arrow{transform:rotate(90deg);}
+.vuln-body{display:none;padding:16px;border-top:1px solid var(--border);background:var(--bg3);}
+.vuln-item.open .vuln-body{display:block;}
+.vuln-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+.vuln-field{display:flex;flex-direction:column;gap:4px;}
+.vuln-field-label{font-size:10px;font-family:var(--font-mono);color:var(--text3);text-transform:uppercase;letter-spacing:1px;}
+.vuln-field-val{font-size:12px;font-family:var(--font-mono);color:var(--text2);}
+.remediation-box{background:var(--bg2);border:1px solid var(--border2);border-left:3px solid var(--green);border-radius:var(--radius);padding:12px;margin-top:12px;}
+.remediation-label{font-size:10px;font-family:var(--font-mono);color:var(--green);margin-bottom:6px;text-transform:uppercase;}
+.remediation-text{font-size:12px;font-family:var(--font-mono);color:var(--text2);line-height:1.6;}
+
+/* SERVICES */
+.service-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:24px;}
+.service-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;}
+.service-port{font-size:20px;font-weight:800;font-family:var(--font-mono);color:var(--accent);margin-bottom:4px;}
+.service-name{font-size:13px;font-family:var(--font-mono);color:var(--text);margin-bottom:8px;}
+.service-detail{font-size:11px;font-family:var(--font-mono);color:var(--text3);}
+.service-badge{display:inline-block;font-size:9px;font-family:var(--font-mono);padding:2px 6px;border-radius:3px;background:rgba(0,212,255,0.1);color:var(--accent);border:1px solid rgba(0,212,255,0.2);margin-top:6px;}
+
+/* CVE TABLE */
+.cve-table{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:12px;}
+.cve-table th{padding:10px 12px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);font-weight:500;}
+.cve-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text2);}
+.cve-table tr:hover td{background:var(--bg3);}
+
+/* PLAN D'ACTION */
+.action-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:20px;}
+.action-col{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;}
+.action-col-title{font-size:11px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+.action-col.immediate .action-col-title{color:var(--red);}
+.action-col.short .action-col-title{color:var(--orange);}
+.action-col.medium .action-col-title{color:var(--accent);}
+.action-item{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;font-size:12px;font-family:var(--font-mono);color:var(--text2);line-height:1.5;}
+.action-item::before{content:'▸';flex-shrink:0;margin-top:1px;}
+.action-col.immediate .action-item::before{color:var(--red);}
+.action-col.short .action-item::before{color:var(--orange);}
+.action-col.medium .action-item::before{color:var(--accent);}
+
+/* ATTACK VECTORS */
+.vector-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;}
+.vector-item{background:rgba(255,61,61,0.06);border:1px solid rgba(255,61,61,0.2);border-radius:var(--radius);padding:12px 16px;font-size:12px;font-family:var(--font-mono);color:var(--text2);display:flex;align-items:flex-start;gap:10px;}
+.vector-item::before{content:'⚠';color:var(--red);flex-shrink:0;}
+
+/* RECOMMENDATIONS */
+.reco-list{display:flex;flex-direction:column;gap:8px;}
+.reco-item{background:rgba(0,255,136,0.05);border:1px solid rgba(0,255,136,0.2);border-radius:var(--radius);padding:12px 16px;font-size:12px;font-family:var(--font-mono);color:var(--text2);display:flex;align-items:flex-start;gap:10px;}
+.reco-item::before{content:'✓';color:var(--green);flex-shrink:0;}
+
+/* HISTORIQUE */
+.history-filters{display:flex;gap:12px;margin-bottom:16px;}
+.filter-select{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;color:var(--text);font-family:var(--font-mono);font-size:12px;outline:none;cursor:pointer;}
+.history-table{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:12px;}
+.history-table th{padding:10px 14px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);background:var(--bg3);}
+.history-table td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text2);}
+.history-table tr:hover td{background:var(--bg3);}
+.history-table td:first-child{color:var(--accent);}
+
+/* EXPORT */
+.export-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;}
+.export-btn{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;text-align:center;cursor:pointer;transition:all 0.2s;text-decoration:none;display:block;}
+.export-btn:hover{border-color:var(--accent);background:var(--bg3);}
+.export-btn-icon{font-size:28px;margin-bottom:8px;}
+.export-btn-label{font-size:12px;font-family:var(--font-mono);color:var(--text2);}
+.export-btn-format{font-size:10px;font-family:var(--font-mono);color:var(--text3);margin-top:4px;}
+
+/* CHARTS */
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin-bottom:20px;}
+.chart-title{font-size:11px;font-family:var(--font-mono);color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;}
+.chart-wrap{height:250px;position:relative;}
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+
+/* SECTION DIVIDER */
+.section-title{font-size:11px;font-family:var(--font-mono);color:var(--text3);text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;display:flex;align-items:center;gap:10px;}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* ALERTS */
+.alert{padding:12px 16px;border-radius:var(--radius);font-size:12px;font-family:var(--font-mono);margin-bottom:12px;display:flex;align-items:center;gap:10px;}
+.alert.success{background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);color:var(--green);}
+.alert.error{background:rgba(255,61,61,0.08);border:1px solid rgba(255,61,61,0.2);color:var(--red);}
+.alert.info{background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.2);color:var(--accent);}
+.alert.warning{background:rgba(255,140,0,0.08);border:1px solid rgba(255,140,0,0.2);color:var(--orange);}
+
+/* EMPTY STATE */
+.empty-state{text-align:center;padding:60px 20px;}
+.empty-icon{font-size:48px;margin-bottom:16px;opacity:0.3;}
+.empty-text{font-size:13px;font-family:var(--font-mono);color:var(--text3);}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:6px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--accent2);}
+
+/* SCAN LOG */
+.scan-log{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;height:120px;overflow-y:auto;font-family:var(--font-mono);font-size:11px;color:var(--text3);}
+.log-line{padding:2px 0;}
+.log-line .t{color:var(--text3);}
+.log-line .ok{color:var(--green);}
+.log-line .info{color:var(--accent);}
+.log-line .warn{color:var(--orange);}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">🛡</div>
+    <div class="logo-text">Agent<span>Sec</span></div>
+  </div>
+
+  <div class="sidebar-status">
+    <div class="status-item">
+      <div class="status-dot checking" id="n8nDot"></div>
+      <span class="status-label">n8n</span>
+      <span class="status-val" id="n8nStatus">vérification...</span>
+    </div>
+    <div class="status-item">
+      <div class="status-dot online"></div>
+      <span class="status-label">Flask API</span>
+      <span class="status-val">:3000</span>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-label">Navigation</div>
+    <div class="nav-item active" onclick="showTab('scan')">
+      <span class="nav-icon">⌖</span> Nouveau scan
+    </div>
+    <div class="nav-item" onclick="showTab('results')">
+      <span class="nav-icon">◈</span> Résultats
+    </div>
+    <div class="nav-item" onclick="showTab('history')">
+      <span class="nav-icon">◷</span> Historique
+    </div>
+    <div class="nav-item" onclick="showTab('charts')">
+      <span class="nav-icon">◫</span> Tendances
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="version-badge">v2.0 · Flask + n8n + Groq</div>
+  </div>
+</aside>
+
+<!-- MAIN CONTENT -->
+<main class="main">
+
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <div class="breadcrumb">agentsec / <span id="currentSection">scan</span></div>
+    <div class="page-title" id="pageTitle">Scanner de <span>Vulnérabilités</span></div>
+    <div class="page-subtitle">// Nmap · Nikto · WPScan · Hydra · SSLScan · WhatWeb · Gobuster · Groq AI</div>
+  </div>
+
+  <!-- ===== SCAN SECTION ===== -->
+  <div id="section-scan">
+
+    <div class="scan-card">
+      <div class="scan-card-title">⌖ Configurer le scan</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">⊕ Cible (IP ou domaine)</label>
+          <input class="form-input" id="target" type="text" placeholder="ex: scanme.nmap.org, 192.168.1.1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">✉ Email destinataire</label>
+          <input class="form-input" id="email" type="email" placeholder="ex: security@entreprise.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">⊞ Plage de ports</label>
+          <input class="form-input" id="ports" type="text" value="22,80,443,8080" placeholder="ex: 1-1000 ou 22,80,443">
+        </div>
+      </div>
+      <button class="scan-btn" id="scanBtn" onclick="launchScan()">
+        <span>▶ LANCER LE SCAN</span>
+      </button>
+      <div class="tool-chips">
+        <div class="chip active">Nmap</div>
+        <div class="chip active">Nikto</div>
+        <div class="chip active">WPScan</div>
+        <div class="chip active">Hydra</div>
+        <div class="chip active">SSLScan</div>
+        <div class="chip active">WhatWeb</div>
+        <div class="chip active">Gobuster</div>
+        <div class="chip active">Groq AI</div>
+      </div>
+    </div>
+
+    <!-- PROGRESS -->
+    <div class="progress-section" id="progressSection">
+      <div class="progress-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div class="scan-card-title" style="margin:0;">⏳ Scan en cours...</div>
+          <div style="font-size:12px;font-family:var(--font-mono);color:var(--text3);" id="elapsedTime">0s</div>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="progress-steps" id="progressSteps">
+          <div class="step" id="step-nmap"><div class="step-icon">🔍</div><div class="step-name">Nmap</div></div>
+          <div class="step" id="step-nikto"><div class="step-icon">📋</div><div class="step-name">Nikto</div></div>
+          <div class="step" id="step-ssl"><div class="step-icon">🔐</div><div class="step-name">SSL</div></div>
+          <div class="step" id="step-hydra"><div class="step-icon">🔑</div><div class="step-name">Hydra</div></div>
+          <div class="step" id="step-ai"><div class="step-icon">🤖</div><div class="step-name">Groq AI</div></div>
+          <div class="step" id="step-report"><div class="step-icon">📄</div><div class="step-name">Rapport</div></div>
+        </div>
+        <div class="scan-log" id="scanLog" style="margin-top:14px;"></div>
+      </div>
+    </div>
+
+    <!-- ALERTS -->
+    <div id="alertZone"></div>
+
+  </div>
+
+  <!-- ===== RESULTS SECTION ===== -->
+  <div id="section-results" style="display:none;">
+
+    <div class="results-header" id="resultsHeader">
+      <div>
+        <div class="results-target" id="resultsTarget">— Aucun scan</div>
+        <div class="results-meta" id="resultsMeta">Lancez un scan pour voir les résultats</div>
+      </div>
+      <div id="riskBadgeWrap"></div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab(this,'tab-summary')">◈ Résumé IA</div>
+      <div class="tab" onclick="switchTab(this,'tab-vulns')">⚠ Vulnérabilités</div>
+      <div class="tab" onclick="switchTab(this,'tab-services')">⊞ Services</div>
+      <div class="tab" onclick="switchTab(this,'tab-export')">↓ Export</div>
+    </div>
+
+    <!-- TAB: SUMMARY -->
+    <div class="tab-content active" id="tab-summary">
+      <div class="score-section">
+        <div class="score-gauge">
+          <div class="score-circle">
+            <svg width="120" height="120" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="50" fill="none" stroke="#1e2535" stroke-width="10"/>
+              <circle cx="60" cy="60" r="50" fill="none" stroke="var(--accent)" stroke-width="10"
+                stroke-dasharray="314" stroke-dashoffset="314" id="scoreCircle" stroke-linecap="round"/>
+            </svg>
+            <div class="score-num" id="scoreNum">—</div>
+          </div>
+          <div style="font-size:11px;font-family:var(--font-mono);color:var(--text3);">Score de sécurité</div>
+          <div id="riskBadge" style="margin-top:10px;"></div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-title">// Résumé exécutif</div>
+          <div class="info-text" id="executiveSummary">Aucun résultat disponible. Lancez un scan.</div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-title">// Statistiques</div>
+          <div class="metrics-grid" style="grid-template-columns:1fr 1fr;gap:10px;" id="statsGrid">
+            <div class="metric critical"><div class="metric-val" id="statCritical">0</div><div class="metric-label">Critiques</div></div>
+            <div class="metric high"><div class="metric-val" id="statHigh">0</div><div class="metric-label">Élevés</div></div>
+            <div class="metric medium"><div class="metric-val" id="statMedium">0</div><div class="metric-label">Moyens</div></div>
+            <div class="metric low"><div class="metric-val" id="statLow">0</div><div class="metric-label">Faibles</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title">Vecteurs d'attaque prioritaires</div>
+      <div class="vector-list" id="vectorList"></div>
+
+      <div class="section-title">Recommandations stratégiques</div>
+      <div class="reco-list" id="recoList"></div>
+
+      <div class="section-title">Plan d'action</div>
+      <div class="action-grid">
+        <div class="action-col immediate">
+          <div class="action-col-title">🚨 Immédiat (24h)</div>
+          <div id="actionImmediat"></div>
+        </div>
+        <div class="action-col short">
+          <div class="action-col-title">📅 Court terme (1 sem.)</div>
+          <div id="actionCourt"></div>
+        </div>
+        <div class="action-col medium">
+          <div class="action-col-title">📈 Moyen terme (1 mois)</div>
+          <div id="actionMoyen"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: VULNS -->
+    <div class="tab-content" id="tab-vulns">
+      <div class="section-title">Vulnérabilités détectées</div>
+      <div class="vuln-list" id="vulnList">
+        <div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Aucune vulnérabilité détectée</div></div>
+      </div>
+    </div>
+
+    <!-- TAB: SERVICES -->
+    <div class="tab-content" id="tab-services">
+      <div class="section-title">Services détectés</div>
+      <div class="service-grid" id="serviceGrid"></div>
+
+      <div class="section-title" style="margin-top:8px;">CVEs associées</div>
+      <div style="overflow-x:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);">
+        <table class="cve-table" id="cveTable">
+          <thead><tr><th>CVE ID</th><th>Sévérité</th><th>Score CVSS</th><th>Description</th></tr></thead>
+          <tbody id="cveTbody"></tbody>
+        </table>
+      </div>
+
+      <div class="section-title" style="margin-top:20px;">Scans additionnels</div>
+      <div id="additionalScans"></div>
+    </div>
+
+    <!-- TAB: EXPORT -->
+    <div class="tab-content" id="tab-export">
+      <div class="section-title">Exporter les résultats</div>
+      <div class="export-grid">
+        <div class="export-btn" onclick="exportResults('csv')">
+          <div class="export-btn-icon">📊</div>
+          <div class="export-btn-label">Exporter CSV</div>
+          <div class="export-btn-format">Tableur Excel</div>
+        </div>
+        <div class="export-btn" onclick="exportResults('json')">
+          <div class="export-btn-icon">{ }</div>
+          <div class="export-btn-label">Exporter JSON</div>
+          <div class="export-btn-format">Données brutes</div>
+        </div>
+        <div class="export-btn" id="pdfExportBtn" style="display:none;" onclick="exportResults('pdf')">
+          <div class="export-btn-icon">📄</div>
+          <div class="export-btn-label">Rapport PDF</div>
+          <div class="export-btn-format">Généré par n8n</div>
+        </div>
+      </div>
+
+      <div class="section-title">Aperçu des données</div>
+      <div class="metrics-grid" id="exportMetrics">
+        <div class="metric critical"><div class="metric-val" id="expCritical">0</div><div class="metric-label">Critiques</div></div>
+        <div class="metric high"><div class="metric-val" id="expHigh">0</div><div class="metric-label">Élevés</div></div>
+        <div class="metric medium"><div class="metric-val" id="expMedium">0</div><div class="metric-label">Moyens</div></div>
+        <div class="metric low"><div class="metric-val" id="expLow">0</div><div class="metric-label">Faibles</div></div>
+        <div class="metric info"><div class="metric-val" id="expTotal">0</div><div class="metric-label">Total</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== HISTORY SECTION ===== -->
+  <div id="section-history" style="display:none;">
+    <div class="history-filters">
+      <select class="filter-select" id="filterTarget" onchange="filterHistory()">
+        <option value="all">Toutes les cibles</option>
+      </select>
+      <select class="filter-select" id="sortBy" onchange="filterHistory()">
+        <option value="date">Date (récent)</option>
+        <option value="score_desc">Score (décroissant)</option>
+        <option value="score_asc">Score (croissant)</option>
+      </select>
+      <button class="export-btn" style="padding:8px 16px;font-size:12px;font-family:var(--font-mono);color:var(--text2);" onclick="exportHistory()">↓ CSV</button>
+    </div>
+    <div style="overflow-x:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);">
+      <table class="history-table" id="historyTable">
+        <thead>
+          <tr>
+            <th>Cible</th><th>Date</th><th>Score</th><th>Risque</th>
+            <th>Findings</th><th>Critiques</th><th>Élevés</th><th>Creds faibles</th>
+          </tr>
+        </thead>
+        <tbody id="historyTbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== CHARTS SECTION ===== -->
+  <div id="section-charts" style="display:none;">
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-title">Évolution du score de sécurité (30 jours)</div>
+        <div class="chart-wrap"><canvas id="scoreChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Distribution des vulnérabilités</div>
+        <div class="chart-wrap"><canvas id="vulnChart"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Évolution des vulnérabilités par sévérité</div>
+      <div class="chart-wrap" style="height:200px;"><canvas id="trendChart"></canvas></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ========== STATE ==========
+let scanResults = null;
+let scanHistory = [];
+let scanTimer = null;
+let startTime = null;
+let chartsInit = false;
+
+// ========== SECTION NAVIGATION ==========
+function showTab(name) {
+  ['scan','results','history','charts'].forEach(s => {
+    document.getElementById('section-'+s).style.display = s === name ? 'block' : 'none';
+  });
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  document.getElementById('currentSection').textContent = name;
+  const titles = {scan:'Scanner de Vulnérabilités', results:'Résultats du Scan', history:'Historique', charts:'Tendances & Statistiques'};
+  document.getElementById('pageTitle').innerHTML = titles[name].replace(/(\w+)$/, '<span>$1</span>');
+  if(name === 'history') loadHistory();
+  if(name === 'charts') loadCharts();
+}
+
+// ========== TAB SWITCHING ==========
+function switchTab(el, tabId) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
+// ========== N8N STATUS ==========
+async function checkN8n() {
+  try {
+    const r = await fetch('/api/check-n8n', {signal: AbortSignal.timeout(4000)});
+    const d = await r.json();
+    const dot = document.getElementById('n8nDot');
+    const status = document.getElementById('n8nStatus');
+    if(d.ok) {
+      dot.className = 'status-dot online';
+      status.textContent = ':5678 ✓';
+    } else {
+      dot.className = 'status-dot offline';
+      status.textContent = 'hors ligne';
+    }
+  } catch {
+    document.getElementById('n8nDot').className = 'status-dot offline';
+    document.getElementById('n8nStatus').textContent = 'hors ligne';
+  }
+}
+checkN8n();
+setInterval(checkN8n, 30000);
+
+// ========== SCAN ==========
+function addLog(msg, type='info') {
+  const log = document.getElementById('scanLog');
+  const now = new Date().toLocaleTimeString('fr-FR');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="t">[${now}]</span> <span class="${type}">${msg}</span>`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+function setStepActive(step) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('step-'+step);
+  if(el) el.classList.add('active');
+}
+function setStepDone(step) {
+  const el = document.getElementById('step-'+step);
+  if(el) { el.classList.remove('active'); el.classList.add('done'); }
+}
+
+async function launchScan() {
+  const target = document.getElementById('target').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const ports = document.getElementById('ports').value.trim();
+
+  if(!target || !email) {
+    showAlert('Veuillez renseigner la cible et l\'email.', 'error');
+    return;
+  }
+
+  // UI state
+  document.getElementById('scanBtn').disabled = true;
+  document.getElementById('scanBtn').classList.add('scanning');
+  document.getElementById('scanBtn').innerHTML = '<span>⏳ SCAN EN COURS...</span>';
+  document.getElementById('progressSection').classList.add('visible');
+  document.getElementById('alertZone').innerHTML = '';
+  document.getElementById('scanLog').innerHTML = '';
+
+  startTime = Date.now();
+  let elapsed = 0;
+  scanTimer = setInterval(() => {
+    elapsed = Math.floor((Date.now()-startTime)/1000);
+    document.getElementById('elapsedTime').textContent = elapsed + 's';
+    document.getElementById('progressBar').style.width = Math.min(elapsed/180*100, 90) + '%';
+  }, 1000);
+
+  addLog('Démarrage du scan sur ' + target, 'info');
+  addLog('Ports: ' + (ports || '22,80,443,8080'), 'info');
+
+  try {
+    const res = await fetch('/api/scan', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({target, email, ports: ports || '22,80,443,8080'})
+    });
+    const data = await res.json();
+
+    if(data.success) {
+      addLog('Scan lancé — ID: ' + data.scan_id, 'ok');
+      setStepActive('nmap');
+      await pollResults(data.scan_id);
+    } else {
+      throw new Error(data.error || 'Erreur inconnue');
+    }
+  } catch(e) {
+    clearInterval(scanTimer);
+    resetScanBtn();
+    showAlert('Erreur: ' + e.message, 'error');
+    addLog('ERREUR: ' + e.message, 'warn');
+  }
+}
+
+async function pollResults(scanId) {
+  const steps = ['nmap','nikto','ssl','hydra','ai','report'];
+  let stepIdx = 0;
+  const stepMessages = [
+    'Nmap: détection des ports et services...',
+    'Nikto: analyse des vulnérabilités web...',
+    'SSLScan: vérification des certificats SSL...',
+    'Hydra: test des credentials...',
+    'Groq AI: analyse intelligente des résultats...',
+    'Génération du rapport PDF...'
+  ];
+
+  const poll = setInterval(async () => {
+    const elapsed = Math.floor((Date.now()-startTime)/1000);
+
+    // Simulate step progression
+    const expectedStep = Math.min(Math.floor(elapsed/20), steps.length-1);
+    while(stepIdx <= expectedStep) {
+      if(stepIdx > 0) setStepDone(steps[stepIdx-1]);
+      setStepActive(steps[stepIdx]);
+      if(stepIdx < stepMessages.length) addLog(stepMessages[stepIdx], 'info');
+      stepIdx++;
+    }
+
+    try {
+      const r = await fetch('/api/results/' + scanId);
+      if(r.ok) {
+        const data = await r.json();
+        if(data && data.scanId) {
+          clearInterval(poll);
+          clearInterval(scanTimer);
+          steps.forEach(s => setStepDone(s));
+          document.getElementById('progressBar').style.width = '100%';
+          addLog('✓ Scan terminé avec succès!', 'ok');
+          scanResults = data;
+          setTimeout(() => {
+            resetScanBtn();
+            displayResults(data);
+            showAlert('Scan terminé ! Résultats disponibles.', 'success');
+          }, 800);
+        }
+      }
+    } catch{}
+
+    if(Date.now()-startTime > 300000) {
+      clearInterval(poll);
+      clearInterval(scanTimer);
+      resetScanBtn();
+      showAlert('Timeout : aucun résultat après 5 minutes.', 'warning');
+    }
+  }, 5000);
+}
+
+function resetScanBtn() {
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = false;
+  btn.classList.remove('scanning');
+  btn.innerHTML = '<span>▶ LANCER LE SCAN</span>';
+}
+
+function showAlert(msg, type) {
+  document.getElementById('alertZone').innerHTML = `<div class="alert ${type}">${msg}</div>`;
+}
+
+// ========== DISPLAY RESULTS ==========
+function displayResults(r) {
+  // Navigate to results tab
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item')[1].classList.add('active');
+  document.getElementById('section-scan').style.display = 'none';
+  document.getElementById('section-results').style.display = 'block';
+
+  // Header
+  document.getElementById('resultsTarget').textContent = r.target || '—';
+  const ts = r.completedAt ? new Date(r.completedAt).toLocaleString('fr-FR') : '—';
+  document.getElementById('resultsMeta').innerHTML = `ID: <span>${r.scanId||'—'}</span> · Terminé: <span>${ts}</span>`;
+
+  const ai = r.aiAnalysis || {};
+  const stats = ai.stats || {};
+  const score = ai.score_securite || 0;
+  const risk = (ai.risque_global || 'INCONNU').toLowerCase();
+
+  // Score circle
+  const circumference = 314;
+  const offset = circumference - (score/100)*circumference;
+  document.getElementById('scoreCircle').style.strokeDashoffset = offset;
+  document.getElementById('scoreNum').textContent = score;
+  const colors = {critical:'var(--red)',high:'var(--orange)',medium:'var(--yellow)',low:'var(--green)'};
+  document.getElementById('scoreCircle').style.stroke = colors[risk] || 'var(--accent)';
+
+  // Risk badge
+  const riskLabels = {critical:'CRITIQUE',high:'ÉLEVÉ',medium:'MOYEN',low:'FAIBLE'};
+  const badgeHtml = `<div class="risk-badge ${risk}">${riskLabels[risk]||risk.toUpperCase()}</div>`;
+  document.getElementById('riskBadge').innerHTML = badgeHtml;
+  document.getElementById('riskBadgeWrap').innerHTML = badgeHtml;
+
+  // Summary
+  document.getElementById('executiveSummary').textContent = ai.resume_executif || 'Analyse non disponible.';
+
+  // Stats
+  document.getElementById('statCritical').textContent = stats.critical||0;
+  document.getElementById('statHigh').textContent = stats.high||0;
+  document.getElementById('statMedium').textContent = stats.medium||0;
+  document.getElementById('statLow').textContent = stats.low||0;
+  document.getElementById('expCritical').textContent = stats.critical||0;
+  document.getElementById('expHigh').textContent = stats.high||0;
+  document.getElementById('expMedium').textContent = stats.medium||0;
+  document.getElementById('expLow').textContent = stats.low||0;
+  document.getElementById('expTotal').textContent = stats.total_findings||0;
+
+  // Vectors
+  const vl = document.getElementById('vectorList');
+  vl.innerHTML = '';
+  (ai.vecteurs_attaque||[]).forEach(v => {
+    vl.innerHTML += `<div class="vector-item">${v}</div>`;
+  });
+  if(!(ai.vecteurs_attaque||[]).length) vl.innerHTML = '<div class="empty-state"><div class="empty-text">Aucun vecteur identifié</div></div>';
+
+  // Recommendations
+  const rl = document.getElementById('recoList');
+  rl.innerHTML = '';
+  (ai.recommandations_globales||[]).forEach(rec => {
+    rl.innerHTML += `<div class="reco-item">${rec}</div>`;
+  });
+
+  // Action plan
+  const plan = ai.plan_action || {};
+  const renderActions = (el, items) => {
+    el.innerHTML = '';
+    (items||[]).forEach(a => el.innerHTML += `<div class="action-item">${a}</div>`);
+    if(!(items||[]).length) el.innerHTML = '<div style="font-size:11px;font-family:var(--font-mono);color:var(--text3);">Aucune action requise</div>';
+  };
+  renderActions(document.getElementById('actionImmediat'), plan.immediat);
+  renderActions(document.getElementById('actionCourt'), plan.court_terme);
+  renderActions(document.getElementById('actionMoyen'), plan.moyen_terme);
+
+  // Vulns
+  const findings = ai.findings_valides || [];
+  const vulnList = document.getElementById('vulnList');
+  vulnList.innerHTML = '';
+  if(findings.length) {
+    findings.forEach((f,i) => {
+      const sev = (f.severite||'info').toLowerCase();
+      vulnList.innerHTML += `
+        <div class="vuln-item" id="vuln-${i}">
+          <div class="vuln-header" onclick="toggleVuln(${i})">
+            <span class="severity-tag ${sev}">${f.severite||'INFO'}</span>
+            <span class="vuln-title">${f.titre||'Vulnérabilité'}</span>
+            <span class="cvss-score">CVSS ${f.cvss_score||'N/A'}</span>
+            <span class="vuln-arrow">▶</span>
+          </div>
+          <div class="vuln-body">
+            <div class="vuln-grid">
+              <div class="vuln-field"><div class="vuln-field-label">Description</div><div class="vuln-field-val">${f.description||'—'}</div></div>
+              <div class="vuln-field"><div class="vuln-field-label">Impact</div><div class="vuln-field-val">${f.impact||'—'}</div></div>
+              <div class="vuln-field"><div class="vuln-field-label">Source</div><div class="vuln-field-val">${f.source||'—'}</div></div>
+              <div class="vuln-field"><div class="vuln-field-label">Urgence / Effort</div><div class="vuln-field-val">${f.urgence||'—'} / ${f.effort||'—'}</div></div>
+            </div>
+            <div class="remediation-box">
+              <div class="remediation-label">✓ Remédiation</div>
+              <div class="remediation-text">${f.remediation||'—'}</div>
+            </div>
+          </div>
+        </div>`;
+    });
+  } else {
+    vulnList.innerHTML = '<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Aucune vulnérabilité détectée</div></div>';
+  }
+
+  // Services
+  const services = r.services || [];
+  const sg = document.getElementById('serviceGrid');
+  sg.innerHTML = '';
+  services.forEach(s => {
+    sg.innerHTML += `
+      <div class="service-card">
+        <div class="service-port">${s.port||'?'}</div>
+        <div class="service-name">${s.service||'unknown'}</div>
+        <div class="service-detail">Version: ${s.version||'N/A'}</div>
+        <div class="service-detail">Produit: ${s.product||'N/A'}</div>
+        ${s.cpe?`<div class="service-badge">${s.cpe}</div>`:''}
+      </div>`;
+  });
+  if(!services.length) sg.innerHTML = '<div class="empty-state"><div class="empty-text">Aucun service détecté</div></div>';
+
+  // CVEs
+  const cves = r.cves || [];
+  const tbody = document.getElementById('cveTbody');
+  tbody.innerHTML = '';
+  cves.slice(0,10).forEach(c => {
+    const sevColor = {CRITICAL:'var(--red)',HIGH:'var(--orange)',MEDIUM:'var(--yellow)',LOW:'var(--green)'}[c.severity?.toUpperCase()]||'var(--text3)';
+    tbody.innerHTML += `<tr>
+      <td style="color:var(--accent)">${c.cveId||'—'}</td>
+      <td style="color:${sevColor}">${c.severity||'—'}</td>
+      <td>${c.cvssScore||'—'}</td>
+      <td style="max-width:400px;">${(c.cveSummary||'').substring(0,120)}${(c.cveSummary||'').length>120?'...':''}</td>
+    </tr>`;
+  });
+  if(!cves.length) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px;">Aucune CVE associée</td></tr>';
+
+  // Additional scans
+  const scans = r.scans || {};
+  const addDiv = document.getElementById('additionalScans');
+  addDiv.innerHTML = '';
+  if(scans.nikto?.length) {
+    addDiv.innerHTML += `<div class="scan-card" style="margin-bottom:12px;">
+      <div class="scan-card-title">📋 Nikto (${scans.nikto.length} résultats)</div>
+      ${scans.nikto.slice(0,10).map(n=>`<div style="font-size:12px;font-family:var(--font-mono);color:var(--text2);padding:4px 0;border-bottom:1px solid var(--border);">${(n.msg||'').substring(0,200)}</div>`).join('')}
+    </div>`;
+  }
+  if(scans.hydra?.filter(h=>h.type==='credential').length) {
+    const creds = scans.hydra.filter(h=>h.type==='credential');
+    addDiv.innerHTML += `<div class="scan-card" style="margin-bottom:12px;border-color:rgba(255,61,61,0.3);">
+      <div class="scan-card-title" style="color:var(--red);">🔑 Credentials faibles (${creds.length} trouvés)</div>
+      ${creds.map(h=>`<div class="alert error" style="margin-bottom:6px;">${h.service?.toUpperCase()||'?'} — ${h.username}:${h.password}</div>`).join('')}
+    </div>`;
+  }
+
+  // PDF export button
+  if(r.pdfInfo?.pdfPath) {
+    document.getElementById('pdfExportBtn').style.display = 'block';
+  }
+}
+
+function toggleVuln(i) {
+  document.getElementById('vuln-'+i).classList.toggle('open');
+}
+
+// ========== EXPORT ==========
+function exportResults(format) {
+  if(!scanResults) { showAlert('Aucun résultat à exporter.','error'); return; }
+  if(format === 'json') {
+    const blob = new Blob([JSON.stringify(scanResults, null, 2)], {type:'application/json'});
+    download(blob, `agentsec_${scanResults.scanId||'scan'}.json`);
+  } else if(format === 'csv') {
+    const findings = (scanResults.aiAnalysis?.findings_valides||[]);
+    const headers = 'ID,Titre,Sévérité,CVSS,Description,Impact,Remédiation,Source,Urgence,Effort';
+    const rows = findings.map(f => [f.id,f.titre,f.severite,f.cvss_score,f.description,f.impact,f.remediation,f.source,f.urgence,f.effort].map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(','));
+    const blob = new Blob([headers+'\n'+rows.join('\n')], {type:'text/csv;charset=utf-8'});
+    download(blob, `agentsec_${scanResults.scanId||'scan'}.csv`);
+  } else if(format === 'pdf') {
+    window.open('/api/download-pdf?path=' + encodeURIComponent(scanResults.pdfInfo.pdfPath));
+  }
+}
+function download(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+}
+
+// ========== HISTORY ==========
+async function loadHistory() {
+  try {
+    const r = await fetch('/api/history');
+    const data = await r.json();
+    scanHistory = data.history || [];
+    renderHistory(scanHistory);
+
+    // Populate filter
+    const targets = [...new Set(scanHistory.map(h=>h.target))];
+    const sel = document.getElementById('filterTarget');
+    sel.innerHTML = '<option value="all">Toutes les cibles</option>';
+    targets.forEach(t => sel.innerHTML += `<option value="${t}">${t}</option>`);
+  } catch { renderHistory([]); }
+}
+
+function renderHistory(data) {
+  const tbody = document.getElementById('historyTbody');
+  tbody.innerHTML = '';
+  if(!data.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:30px;">Aucun historique disponible</td></tr>';
+    return;
+  }
+  data.forEach(h => {
+    const riskColors = {CRITIQUE:'var(--red)',ÉLEVÉ:'var(--orange)',MOYEN:'var(--yellow)',FAIBLE:'var(--green)'};
+    const rc = riskColors[h.risk_level] || 'var(--text3)';
+    const d = h.completed_at ? new Date(h.completed_at).toLocaleString('fr-FR') : '—';
+    tbody.innerHTML += `<tr>
+      <td>${h.target||'—'}</td>
+      <td style="color:var(--text3)">${d}</td>
+      <td style="font-weight:800">${h.security_score||0}/100</td>
+      <td style="color:${rc}">${h.risk_level||'—'}</td>
+      <td>${h.total_findings||0}</td>
+      <td style="color:var(--red)">${h.critical||0}</td>
+      <td style="color:var(--orange)">${h.high||0}</td>
+      <td style="color:var(--yellow)">${h.weak_credentials||0}</td>
+    </tr>`;
+  });
+}
+
+function filterHistory() {
+  let data = [...scanHistory];
+  const tFilter = document.getElementById('filterTarget').value;
+  const sort = document.getElementById('sortBy').value;
+  if(tFilter !== 'all') data = data.filter(h=>h.target===tFilter);
+  if(sort==='score_desc') data.sort((a,b)=>b.security_score-a.security_score);
+  else if(sort==='score_asc') data.sort((a,b)=>a.security_score-b.security_score);
+  else data.sort((a,b)=>new Date(b.completed_at)-new Date(a.completed_at));
+  renderHistory(data);
+}
+
+function exportHistory() {
+  const headers = 'Cible,Date,Score,Risque,Total,Critiques,Élevés,Creds faibles';
+  const rows = scanHistory.map(h=>[h.target,h.completed_at,h.security_score,h.risk_level,h.total_findings,h.critical,h.high,h.weak_credentials].join(','));
+  const blob = new Blob([headers+'\n'+rows.join('\n')], {type:'text/csv'});
+  download(blob, 'historique_agentsec.csv');
+}
+
+// ========== CHARTS ==========
+async function loadCharts() {
+  if(chartsInit) return;
+  chartsInit = true;
+  try {
+    const r = await fetch('/api/trends');
+    const data = await r.json();
+    buildCharts(data.trends||[]);
+  } catch { buildCharts([]); }
+}
+
+function buildCharts(trends) {
+  const labels = trends.map(t=>t.date);
+  const scores = trends.map(t=>t.avg_score||0);
+  const criticals = trends.map(t=>t.avg_critical||0);
+  const highs = trends.map(t=>t.avg_high||0);
+  const mediums = trends.map(t=>t.avg_medium||0);
+
+  Chart.defaults.color = '#8892a4';
+  Chart.defaults.borderColor = '#1e2d40';
+
+  new Chart(document.getElementById('scoreChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Score moyen',
+        data: scores,
+        borderColor: '#00d4ff',
+        backgroundColor: 'rgba(0,212,255,0.08)',
+        tension: 0.4,
+        fill: true,
+        pointBackgroundColor: '#00d4ff',
+        pointRadius: 4
+      }]
+    },
+    options: {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{min:0,max:100,grid:{color:'#1e2d40'}},x:{grid:{color:'#1e2d40'}}}}
+  });
+
+  // Distribution pie
+  const currentStats = scanResults?.aiAnalysis?.stats || {};
+  new Chart(document.getElementById('vulnChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Critiques','Élevés','Moyens','Faibles'],
+      datasets: [{
+        data: [currentStats.critical||0,currentStats.high||0,currentStats.medium||0,currentStats.low||0],
+        backgroundColor: ['rgba(255,61,61,0.8)','rgba(255,140,0,0.8)','rgba(255,214,0,0.8)','rgba(0,255,136,0.8)'],
+        borderWidth: 0
+      }]
+    },
+    options: {responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right'}},cutout:'65%'}
+  });
+
+  new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {label:'Critiques',data:criticals,borderColor:'#ff3d3d',tension:0.4,pointRadius:3},
+        {label:'Élevés',data:highs,borderColor:'#ff8c00',tension:0.4,pointRadius:3},
+        {label:'Moyens',data:mediums,borderColor:'#ffd600',tension:0.4,pointRadius:3}
+      ]
+    },
+    options: {responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{y:{grid:{color:'#1e2d40'}},x:{grid:{color:'#1e2d40'}}}}
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Security Pipeline - Consolidation</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #0a0c10;
+            color: #00d4ff;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #111418;
+            border: 1px solid #2a2f3a;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .badge-critical { background: #ef4444; color: white; padding: 2px 8px; border-radius: 4px; }
+        .badge-high { background: #f59e0b; color: black; padding: 2px 8px; border-radius: 4px; }
+        .badge-medium { background: #eab308; color: black; padding: 2px 8px; border-radius: 4px; }
+        .badge-low { background: #10b981; color: white; padding: 2px 8px; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #2a2f3a; }
+        .btn {
+            background: #00d4ff;
+            color: #0a0c10;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 Security Pipeline - Consolidated View</h1>
+        
+        <div class="card">
+            <h2>📊 Weekly Security Report</h2>
+            <div id="stats"></div>
+        </div>
+        
+        <div class="card">
+            <h2>🔍 Scan Comparison</h2>
+            <table id="comparison">
+                <thead>
+                    <tr><th>Date</th><th>Target</th><th>Fast Scan</th><th>Deep Scan (OpenVAS)</th><th>Total Findings</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        
+        <div class="card">
+            <h2>🎯 Critical Vulnerabilities</h2>
+            <div id="critical"></div>
+        </div>
+        
+        <div class="card">
+            <a href="/" class="btn">← Back to Dashboard</a>
+            <a href="/generate-weekly-report" class="btn" style="margin-left: 10px;">📄 Generate Weekly Report</a>
+        </div>
+    </div>
+    
+    <script>
+        async function loadConsolidation() {
+            const response = await fetch('/api/consolidated-stats');
+            const data = await response.json();
+            
+            // Update stats
+            document.getElementById('stats').innerHTML = `
+                <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:20px;">
+                    <div><strong>Total Scans:</strong> ${data.total_scans}</div>
+                    <div><strong>Critical Findings:</strong> <span class="badge-critical">${data.critical}</span></div>
+                    <div><strong>High Findings:</strong> <span class="badge-high">${data.high}</span></div>
+                    <div><strong>Avg Security Score:</strong> ${data.avg_score}/100</div>
+                </div>
+            `;
+            
+            // Update table
+            const tbody = document.querySelector('#comparison tbody');
+            tbody.innerHTML = data.scans.map(s => `
+                <tr>
+                    <td>${new Date(s.date).toLocaleDateString()}</td>
+                    <td>${s.target}</td>
+                    <td>${s.fast_findings || 0} findings</td>
+                    <td>${s.deep_findings || 0} findings</td>
+                    <td>${(s.fast_findings || 0) + (s.deep_findings || 0)}</td>
+                </tr>
+            `).join('');
+            
+            // Update critical
+            document.getElementById('critical').innerHTML = data.critical_findings.map(f => `
+                <div style="background:#1a1f26; padding:10px; margin:10px 0; border-left:3px solid #ef4444;">
+                    <strong>${f.title}</strong> - ${f.severity}
+                    <br><small>${f.description}</small>
+                </div>
+            `).join('') || '<p>No critical findings this week</p>';
+        }
+        
+        loadConsolidation();
+    </script>
+</body>
+</html>

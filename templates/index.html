@@ -31,8 +31,6 @@
 }
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-height:100vh;overflow-x:hidden;}
-
-/* SCANLINE EFFECT */
 body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,0.015) 2px,rgba(0,212,255,0.015) 4px);pointer-events:none;z-index:0;}
 
 /* SIDEBAR */
@@ -92,9 +90,6 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 .progress-section{display:none;margin-bottom:28px;}
 .progress-section.visible{display:block;}
 .progress-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;}
-.progress-header{display:flex;align-items:center;justify-content:between;margin-bottom:16px;}
-.progress-title{font-size:13px;font-family:var(--font-mono);color:var(--accent);flex:1;}
-.progress-time{font-size:12px;font-family:var(--font-mono);color:var(--text3);}
 .progress-bar-wrap{background:var(--bg3);border-radius:4px;height:6px;margin-bottom:16px;overflow:hidden;}
 .progress-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:4px;transition:width 0.5s ease;width:0%;}
 .progress-steps{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;}
@@ -134,7 +129,6 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 .metric.medium .metric-val{color:var(--yellow);}
 .metric.low .metric-val{color:var(--green);}
 .metric.info .metric-val{color:var(--accent);}
-.metric.score .metric-val{color:var(--text);}
 
 /* SCORE DISPLAY */
 .score-section{display:grid;grid-template-columns:200px 1fr 1fr;gap:20px;margin-bottom:24px;}
@@ -143,6 +137,10 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 .score-circle svg{transform:rotate(-90deg);}
 .score-num{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:28px;font-weight:800;font-family:var(--font-mono);}
 .risk-badge{display:inline-block;padding:6px 16px;border-radius:4px;font-size:12px;font-family:var(--font-mono);font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-top:8px;}
+.risk-badge.critique{background:rgba(255,61,61,0.15);color:var(--red);border:1px solid var(--red);}
+.risk-badge.élevé{background:rgba(255,140,0,0.15);color:var(--orange);border:1px solid var(--orange);}
+.risk-badge.moyen{background:rgba(255,214,0,0.15);color:var(--yellow);border:1px solid var(--yellow);}
+.risk-badge.faible{background:rgba(0,255,136,0.15);color:var(--green);border:1px solid var(--green);}
 .risk-badge.critical{background:rgba(255,61,61,0.15);color:var(--red);border:1px solid var(--red);}
 .risk-badge.high{background:rgba(255,140,0,0.15);color:var(--orange);border:1px solid var(--orange);}
 .risk-badge.medium{background:rgba(255,214,0,0.15);color:var(--yellow);border:1px solid var(--yellow);}
@@ -290,22 +288,22 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 
   <nav class="sidebar-nav">
     <div class="nav-label">Navigation</div>
-    <div class="nav-item active" onclick="showTab('scan')">
+    <div class="nav-item active" onclick="showTab('scan', this)">
       <span class="nav-icon">⌖</span> Nouveau scan
     </div>
-    <div class="nav-item" onclick="showTab('results')">
+    <div class="nav-item" onclick="showTab('results', this)">
       <span class="nav-icon">◈</span> Résultats
     </div>
-    <div class="nav-item" onclick="showTab('history')">
+    <div class="nav-item" onclick="showTab('history', this)">
       <span class="nav-icon">◷</span> Historique
     </div>
-    <div class="nav-item" onclick="showTab('charts')">
+    <div class="nav-item" onclick="showTab('charts', this)">
       <span class="nav-icon">◫</span> Tendances
     </div>
   </nav>
 
   <div class="sidebar-footer">
-    <div class="version-badge">v2.0 · Flask + n8n + Groq</div>
+    <div class="version-badge">v4.2 · Flask + n8n + Groq</div>
   </div>
 </aside>
 
@@ -420,7 +418,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
         </div>
         <div class="info-card">
           <div class="info-card-title">// Statistiques</div>
-          <div class="metrics-grid" style="grid-template-columns:1fr 1fr;gap:10px;" id="statsGrid">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;" id="statsGrid">
             <div class="metric critical"><div class="metric-val" id="statCritical">0</div><div class="metric-label">Critiques</div></div>
             <div class="metric high"><div class="metric-val" id="statHigh">0</div><div class="metric-label">Élevés</div></div>
             <div class="metric medium"><div class="metric-val" id="statMedium">0</div><div class="metric-label">Moyens</div></div>
@@ -499,6 +497,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
       </div>
 
       <div class="section-title">Aperçu des données</div>
+      <!-- ✅ FIX: stats calculées depuis les vrais findings, pas Groq -->
       <div class="metrics-grid" id="exportMetrics">
         <div class="metric critical"><div class="metric-val" id="expCritical">0</div><div class="metric-label">Critiques</div></div>
         <div class="metric high"><div class="metric-val" id="expHigh">0</div><div class="metric-label">Élevés</div></div>
@@ -559,19 +558,38 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 // ========== STATE ==========
 let scanResults = null;
 let scanHistory = [];
-let scanTimer = null;
-let startTime = null;
-let chartsInit = false;
+let scanTimer   = null;
+let progressTimer = null;
+let startTime   = null;
+let chartsInit  = false;
+let currentScanId = null;
+
+// Step order for tracking
+const STEPS_ORDER = ['nmap','nikto','ssl','hydra','ai','report'];
+const STEP_MESSAGES = {
+  nmap:   'Nmap: scan des ports et services en cours...',
+  nikto:  'Nikto: analyse des vulnérabilités web...',
+  ssl:    'SSLScan: vérification des certificats SSL/TLS...',
+  hydra:  'Hydra: test des credentials par défaut...',
+  ai:     'Groq AI: analyse intelligente des résultats...',
+  report: 'Génération du rapport PDF...',
+};
+let lastKnownSteps = [];
 
 // ========== SECTION NAVIGATION ==========
-function showTab(name) {
+function showTab(name, el) {
   ['scan','results','history','charts'].forEach(s => {
     document.getElementById('section-'+s).style.display = s === name ? 'block' : 'none';
   });
-  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  event.currentTarget.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+  if(el) el.classList.add('active');
   document.getElementById('currentSection').textContent = name;
-  const titles = {scan:'Scanner de Vulnérabilités', results:'Résultats du Scan', history:'Historique', charts:'Tendances & Statistiques'};
+  const titles = {
+    scan: 'Scanner de Vulnérabilités',
+    results: 'Résultats du Scan',
+    history: 'Historique',
+    charts: 'Tendances & Statistiques'
+  };
   document.getElementById('pageTitle').innerHTML = titles[name].replace(/(\w+)$/, '<span>$1</span>');
   if(name === 'history') loadHistory();
   if(name === 'charts') loadCharts();
@@ -607,7 +625,7 @@ async function checkN8n() {
 checkN8n();
 setInterval(checkN8n, 30000);
 
-// ========== SCAN ==========
+// ========== SCAN LOG ==========
 function addLog(msg, type='info') {
   const log = document.getElementById('scanLog');
   const now = new Date().toLocaleTimeString('fr-FR');
@@ -618,40 +636,52 @@ function addLog(msg, type='info') {
   log.scrollTop = log.scrollHeight;
 }
 
+// ========== STEP CONTROL ==========
 function setStepActive(step) {
-  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.step').forEach(s => {
+    if(!s.classList.contains('done')) s.classList.remove('active');
+  });
   const el = document.getElementById('step-'+step);
-  if(el) el.classList.add('active');
+  if(el && !el.classList.contains('done')) el.classList.add('active');
 }
+
 function setStepDone(step) {
   const el = document.getElementById('step-'+step);
   if(el) { el.classList.remove('active'); el.classList.add('done'); }
 }
 
+function resetAllSteps() {
+  STEPS_ORDER.forEach(s => {
+    const el = document.getElementById('step-'+s);
+    if(el) { el.classList.remove('active','done'); }
+  });
+  lastKnownSteps = [];
+}
+
+// ========== LAUNCH SCAN ==========
 async function launchScan() {
   const target = document.getElementById('target').value.trim();
-  const email = document.getElementById('email').value.trim();
-  const ports = document.getElementById('ports').value.trim();
+  const email  = document.getElementById('email').value.trim();
+  const ports  = document.getElementById('ports').value.trim();
 
   if(!target || !email) {
     showAlert('Veuillez renseigner la cible et l\'email.', 'error');
     return;
   }
 
-  // UI state
+  // Reset UI
   document.getElementById('scanBtn').disabled = true;
   document.getElementById('scanBtn').classList.add('scanning');
   document.getElementById('scanBtn').innerHTML = '<span>⏳ SCAN EN COURS...</span>';
   document.getElementById('progressSection').classList.add('visible');
   document.getElementById('alertZone').innerHTML = '';
   document.getElementById('scanLog').innerHTML = '';
+  resetAllSteps();
 
   startTime = Date.now();
-  let elapsed = 0;
   scanTimer = setInterval(() => {
-    elapsed = Math.floor((Date.now()-startTime)/1000);
+    const elapsed = Math.floor((Date.now()-startTime)/1000);
     document.getElementById('elapsedTime').textContent = elapsed + 's';
-    document.getElementById('progressBar').style.width = Math.min(elapsed/180*100, 90) + '%';
   }, 1000);
 
   addLog('Démarrage du scan sur ' + target, 'info');
@@ -666,9 +696,9 @@ async function launchScan() {
     const data = await res.json();
 
     if(data.success) {
-      addLog('Scan lancé — ID: ' + data.scan_id, 'ok');
-      setStepActive('nmap');
-      await pollResults(data.scan_id);
+      currentScanId = data.scan_id;
+      addLog('Scan lancé — ID: ' + currentScanId, 'ok');
+      startProgressPolling(currentScanId);
     } else {
       throw new Error(data.error || 'Erreur inconnue');
     }
@@ -680,57 +710,117 @@ async function launchScan() {
   }
 }
 
-async function pollResults(scanId) {
-  const steps = ['nmap','nikto','ssl','hydra','ai','report'];
-  let stepIdx = 0;
-  const stepMessages = [
-    'Nmap: détection des ports et services...',
-    'Nikto: analyse des vulnérabilités web...',
-    'SSLScan: vérification des certificats SSL...',
-    'Hydra: test des credentials...',
-    'Groq AI: analyse intelligente des résultats...',
-    'Génération du rapport PDF...'
-  ];
+// ========== REAL PROGRESS POLLING (replaces fake timer-based steps) ==========
+function startProgressPolling(scanId) {
+  let lastLogCount = 0;
+  let activeStep = null;
 
-  const poll = setInterval(async () => {
-    const elapsed = Math.floor((Date.now()-startTime)/1000);
-
-    // Simulate step progression
-    const expectedStep = Math.min(Math.floor(elapsed/20), steps.length-1);
-    while(stepIdx <= expectedStep) {
-      if(stepIdx > 0) setStepDone(steps[stepIdx-1]);
-      setStepActive(steps[stepIdx]);
-      if(stepIdx < stepMessages.length) addLog(stepMessages[stepIdx], 'info');
-      stepIdx++;
-    }
-
+  progressTimer = setInterval(async () => {
     try {
-      const r = await fetch('/api/results/' + scanId);
-      if(r.ok) {
-        const data = await r.json();
-        if(data && data.scanId) {
-          clearInterval(poll);
-          clearInterval(scanTimer);
-          steps.forEach(s => setStepDone(s));
-          document.getElementById('progressBar').style.width = '100%';
-          addLog('✓ Scan terminé avec succès!', 'ok');
-          scanResults = data;
-          setTimeout(() => {
-            resetScanBtn();
-            displayResults(data);
-            showAlert('Scan terminé ! Résultats disponibles.', 'success');
-          }, 800);
+      const r = await fetch('/api/results/' + scanId + '/progress');
+      if(!r.ok) return;
+      const data = await r.json();
+
+      const steps  = data.steps  || [];
+      const logs   = data.logs   || [];
+      const done   = data.completed || false;
+
+      // ── Update steps UI from real n8n progress ─────────────────
+      steps.forEach(step => {
+        if(!lastKnownSteps.includes(step)) {
+          setStepDone(step);
+          lastKnownSteps.push(step);
+          addLog('✓ ' + (STEP_MESSAGES[step] || step), 'ok');
+        }
+      });
+
+      // Show next active step (first step not yet done)
+      const nextStep = STEPS_ORDER.find(s => !steps.includes(s));
+      if(nextStep && nextStep !== activeStep) {
+        activeStep = nextStep;
+        setStepActive(nextStep);
+        if(STEP_MESSAGES[nextStep] && !lastKnownSteps.includes('_active_'+nextStep)) {
+          lastKnownSteps.push('_active_'+nextStep);
+          addLog(STEP_MESSAGES[nextStep], 'info');
         }
       }
-    } catch{}
 
+      // ── Real-time logs from n8n ─────────────────────────────────
+      if(logs.length > lastLogCount) {
+        const newLogs = logs.slice(lastLogCount);
+        newLogs.forEach(l => addLog(l.message, l.type || 'info'));
+        lastLogCount = logs.length;
+      }
+
+      // ── Progress bar — based on real steps completed ────────────
+      const pct = Math.min(95, (steps.length / STEPS_ORDER.length) * 100);
+      document.getElementById('progressBar').style.width = pct + '%';
+
+      // ── Poll final result ───────────────────────────────────────
+      if(done) {
+        clearInterval(progressTimer);
+        await fetchFinalResult(scanId);
+        return;
+      }
+
+      // Also try fetching result directly (webhook may have already fired)
+      const rr = await fetch('/api/results/' + scanId);
+      if(rr.status === 200) {
+        clearInterval(progressTimer);
+        const result = await rr.json();
+        if(result && result.scanId) {
+          finalizeResult(result);
+        }
+        return;
+      }
+
+    } catch(e) {
+      // Network hiccup — keep polling
+    }
+
+    // Timeout after 5 minutes
     if(Date.now()-startTime > 300000) {
-      clearInterval(poll);
+      clearInterval(progressTimer);
       clearInterval(scanTimer);
       resetScanBtn();
       showAlert('Timeout : aucun résultat après 5 minutes.', 'warning');
     }
-  }, 5000);
+
+  }, 3000); // Poll every 3 seconds
+}
+
+async function fetchFinalResult(scanId) {
+  try {
+    const r = await fetch('/api/results/' + scanId);
+    if(r.status === 200) {
+      const data = await r.json();
+      if(data && data.scanId) {
+        finalizeResult(data);
+        return;
+      }
+    }
+  } catch(e) {}
+  // If not ready yet, retry once more
+  setTimeout(() => fetchFinalResult(scanId), 2000);
+}
+
+function finalizeResult(data) {
+  clearInterval(scanTimer);
+  clearInterval(progressTimer);
+
+  // Mark all steps done
+  STEPS_ORDER.forEach(s => setStepDone(s));
+  document.getElementById('progressBar').style.width = '100%';
+  addLog('✓ Scan terminé avec succès!', 'ok');
+
+  scanResults = data;
+  chartsInit = false; // Reset so charts refresh with new data
+
+  setTimeout(() => {
+    resetScanBtn();
+    displayResults(data);
+    showAlert('Scan terminé ! Résultats disponibles.', 'success');
+  }, 800);
 }
 
 function resetScanBtn() {
@@ -738,6 +828,8 @@ function resetScanBtn() {
   btn.disabled = false;
   btn.classList.remove('scanning');
   btn.innerHTML = '<span>▶ LANCER LE SCAN</span>';
+  clearInterval(scanTimer);
+  clearInterval(progressTimer);
 }
 
 function showAlert(msg, type) {
@@ -757,38 +849,55 @@ function displayResults(r) {
   const ts = r.completedAt ? new Date(r.completedAt).toLocaleString('fr-FR') : '—';
   document.getElementById('resultsMeta').innerHTML = `ID: <span>${r.scanId||'—'}</span> · Terminé: <span>${ts}</span>`;
 
-  const ai = r.aiAnalysis || {};
-  const stats = ai.stats || {};
-  const score = ai.score_securite || 0;
-  const risk = (ai.risque_global || 'INCONNU').toLowerCase();
+  const ai       = r.aiAnalysis || {};
+  const scans    = r.scans      || {};
+  const findings = ai.findings_valides || [];
+  const score    = ai.score_securite || 0;
+  const risk     = (ai.risque_global || 'INCONNU');
+
+  // ── ✅ FIX: Recount stats from REAL findings array ────────────────────────
+  const realStats = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+  findings.forEach(f => {
+    if(f.faux_positif) return;
+    const sev = (f.severite || 'info').toLowerCase();
+    if(realStats[sev] !== undefined) realStats[sev]++;
+    else realStats.info++;
+  });
+  const niktoCount = (scans.nikto || []).length;
+  const hydraCredCount = (scans.hydra || []).filter(h => h.type === 'credential').length;
+  const realTotal = findings.filter(f => !f.faux_positif).length + niktoCount + hydraCredCount;
 
   // Score circle
   const circumference = 314;
   const offset = circumference - (score/100)*circumference;
   document.getElementById('scoreCircle').style.strokeDashoffset = offset;
   document.getElementById('scoreNum').textContent = score;
-  const colors = {critical:'var(--red)',high:'var(--orange)',medium:'var(--yellow)',low:'var(--green)'};
-  document.getElementById('scoreCircle').style.stroke = colors[risk] || 'var(--accent)';
+
+  const riskKey   = risk.toLowerCase();
+  const colorMap  = {critique:'var(--red)',élevé:'var(--orange)',moyen:'var(--yellow)',faible:'var(--green)',
+                     critical:'var(--red)',high:'var(--orange)',medium:'var(--yellow)',low:'var(--green)'};
+  document.getElementById('scoreCircle').style.stroke = colorMap[riskKey] || 'var(--accent)';
 
   // Risk badge
-  const riskLabels = {critical:'CRITIQUE',high:'ÉLEVÉ',medium:'MOYEN',low:'FAIBLE'};
-  const badgeHtml = `<div class="risk-badge ${risk}">${riskLabels[risk]||risk.toUpperCase()}</div>`;
-  document.getElementById('riskBadge').innerHTML = badgeHtml;
+  const badgeHtml = `<div class="risk-badge ${riskKey}">${risk}</div>`;
+  document.getElementById('riskBadge').innerHTML     = badgeHtml;
   document.getElementById('riskBadgeWrap').innerHTML = badgeHtml;
 
   // Summary
   document.getElementById('executiveSummary').textContent = ai.resume_executif || 'Analyse non disponible.';
 
-  // Stats
-  document.getElementById('statCritical').textContent = stats.critical||0;
-  document.getElementById('statHigh').textContent = stats.high||0;
-  document.getElementById('statMedium').textContent = stats.medium||0;
-  document.getElementById('statLow').textContent = stats.low||0;
-  document.getElementById('expCritical').textContent = stats.critical||0;
-  document.getElementById('expHigh').textContent = stats.high||0;
-  document.getElementById('expMedium').textContent = stats.medium||0;
-  document.getElementById('expLow').textContent = stats.low||0;
-  document.getElementById('expTotal').textContent = stats.total_findings||0;
+  // ── Stats (Summary tab) — from real count ─────────────────────────────────
+  document.getElementById('statCritical').textContent = realStats.critical;
+  document.getElementById('statHigh').textContent     = realStats.high;
+  document.getElementById('statMedium').textContent   = realStats.medium;
+  document.getElementById('statLow').textContent      = realStats.low;
+
+  // ── Stats (Export tab / Aperçu des données) — from real count ────────────
+  document.getElementById('expCritical').textContent  = realStats.critical;
+  document.getElementById('expHigh').textContent      = realStats.high;
+  document.getElementById('expMedium').textContent    = realStats.medium;
+  document.getElementById('expLow').textContent       = realStats.low;
+  document.getElementById('expTotal').textContent     = realTotal;
 
   // Vectors
   const vl = document.getElementById('vectorList');
@@ -796,7 +905,8 @@ function displayResults(r) {
   (ai.vecteurs_attaque||[]).forEach(v => {
     vl.innerHTML += `<div class="vector-item">${v}</div>`;
   });
-  if(!(ai.vecteurs_attaque||[]).length) vl.innerHTML = '<div class="empty-state"><div class="empty-text">Aucun vecteur identifié</div></div>';
+  if(!(ai.vecteurs_attaque||[]).length)
+    vl.innerHTML = '<div class="empty-state"><div class="empty-text">Aucun vecteur identifié</div></div>';
 
   // Recommendations
   const rl = document.getElementById('recoList');
@@ -810,18 +920,19 @@ function displayResults(r) {
   const renderActions = (el, items) => {
     el.innerHTML = '';
     (items||[]).forEach(a => el.innerHTML += `<div class="action-item">${a}</div>`);
-    if(!(items||[]).length) el.innerHTML = '<div style="font-size:11px;font-family:var(--font-mono);color:var(--text3);">Aucune action requise</div>';
+    if(!(items||[]).length)
+      el.innerHTML = '<div style="font-size:11px;font-family:var(--font-mono);color:var(--text3);">Aucune action requise</div>';
   };
   renderActions(document.getElementById('actionImmediat'), plan.immediat);
-  renderActions(document.getElementById('actionCourt'), plan.court_terme);
-  renderActions(document.getElementById('actionMoyen'), plan.moyen_terme);
+  renderActions(document.getElementById('actionCourt'),    plan.court_terme);
+  renderActions(document.getElementById('actionMoyen'),    plan.moyen_terme);
 
   // Vulns
-  const findings = ai.findings_valides || [];
   const vulnList = document.getElementById('vulnList');
   vulnList.innerHTML = '';
-  if(findings.length) {
-    findings.forEach((f,i) => {
+  const validFindings = findings.filter(f => !f.faux_positif);
+  if(validFindings.length) {
+    validFindings.forEach((f,i) => {
       const sev = (f.severite||'info').toLowerCase();
       vulnList.innerHTML += `
         <div class="vuln-item" id="vuln-${i}">
@@ -853,7 +964,12 @@ function displayResults(r) {
   const services = r.services || [];
   const sg = document.getElementById('serviceGrid');
   sg.innerHTML = '';
+  // Deduplicate by port
+  const seenPorts = new Set();
   services.forEach(s => {
+    const key = `${s.port}/${s.service}`;
+    if(seenPorts.has(key)) return;
+    seenPorts.add(key);
     sg.innerHTML += `
       <div class="service-card">
         <div class="service-port">${s.port||'?'}</div>
@@ -863,14 +979,16 @@ function displayResults(r) {
         ${s.cpe?`<div class="service-badge">${s.cpe}</div>`:''}
       </div>`;
   });
-  if(!services.length) sg.innerHTML = '<div class="empty-state"><div class="empty-text">Aucun service détecté</div></div>';
+  if(!services.length)
+    sg.innerHTML = '<div class="empty-state"><div class="empty-text">Aucun service détecté</div></div>';
 
   // CVEs
   const cves = r.cves || [];
   const tbody = document.getElementById('cveTbody');
   tbody.innerHTML = '';
   cves.slice(0,10).forEach(c => {
-    const sevColor = {CRITICAL:'var(--red)',HIGH:'var(--orange)',MEDIUM:'var(--yellow)',LOW:'var(--green)'}[c.severity?.toUpperCase()]||'var(--text3)';
+    const sevColor = {CRITICAL:'var(--red)',HIGH:'var(--orange)',MEDIUM:'var(--yellow)',LOW:'var(--green)'}
+                    [(c.severity||'').toUpperCase()] || 'var(--text3)';
     tbody.innerHTML += `<tr>
       <td style="color:var(--accent)">${c.cveId||'—'}</td>
       <td style="color:${sevColor}">${c.severity||'—'}</td>
@@ -878,29 +996,36 @@ function displayResults(r) {
       <td style="max-width:400px;">${(c.cveSummary||'').substring(0,120)}${(c.cveSummary||'').length>120?'...':''}</td>
     </tr>`;
   });
-  if(!cves.length) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px;">Aucune CVE associée</td></tr>';
+  if(!cves.length)
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px;">Aucune CVE associée</td></tr>';
 
   // Additional scans
-  const scans = r.scans || {};
   const addDiv = document.getElementById('additionalScans');
   addDiv.innerHTML = '';
-  if(scans.nikto?.length) {
+  if((scans.nikto||[]).length) {
     addDiv.innerHTML += `<div class="scan-card" style="margin-bottom:12px;">
       <div class="scan-card-title">📋 Nikto (${scans.nikto.length} résultats)</div>
       ${scans.nikto.slice(0,10).map(n=>`<div style="font-size:12px;font-family:var(--font-mono);color:var(--text2);padding:4px 0;border-bottom:1px solid var(--border);">${(n.msg||'').substring(0,200)}</div>`).join('')}
     </div>`;
   }
-  if(scans.hydra?.filter(h=>h.type==='credential').length) {
-    const creds = scans.hydra.filter(h=>h.type==='credential');
+  const creds = (scans.hydra||[]).filter(h=>h.type==='credential');
+  if(creds.length) {
     addDiv.innerHTML += `<div class="scan-card" style="margin-bottom:12px;border-color:rgba(255,61,61,0.3);">
       <div class="scan-card-title" style="color:var(--red);">🔑 Credentials faibles (${creds.length} trouvés)</div>
-      ${creds.map(h=>`<div class="alert error" style="margin-bottom:6px;">${h.service?.toUpperCase()||'?'} — ${h.username}:${h.password}</div>`).join('')}
+      ${creds.map(h=>`<div class="alert error" style="margin-bottom:6px;">${(h.service||'?').toUpperCase()} — ${h.username}:${h.password}</div>`).join('')}
     </div>`;
   }
 
   // PDF export button
-  if(r.pdfInfo?.pdfPath) {
-    document.getElementById('pdfExportBtn').style.display = 'block';
+  const pdfPath  = r.pdfInfo?.pdfPath  || r.report_path || '';
+  const driveUrl = r.pdfInfo?.driveUrl || '';
+  if(pdfPath || driveUrl) {
+    const pdfBtn = document.getElementById('pdfExportBtn');
+    pdfBtn.style.display = 'block';
+    if(driveUrl) {
+      pdfBtn.querySelector('.export-btn-format').textContent = 'Ouvrir sur Drive';
+      pdfBtn.onclick = () => window.open(driveUrl, '_blank');
+    }
   }
 }
 
@@ -915,17 +1040,24 @@ function exportResults(format) {
     const blob = new Blob([JSON.stringify(scanResults, null, 2)], {type:'application/json'});
     download(blob, `agentsec_${scanResults.scanId||'scan'}.json`);
   } else if(format === 'csv') {
-    const findings = (scanResults.aiAnalysis?.findings_valides||[]);
+    const findings = (scanResults.aiAnalysis?.findings_valides||[]).filter(f=>!f.faux_positif);
     const headers = 'ID,Titre,Sévérité,CVSS,Description,Impact,Remédiation,Source,Urgence,Effort';
-    const rows = findings.map(f => [f.id,f.titre,f.severite,f.cvss_score,f.description,f.impact,f.remediation,f.source,f.urgence,f.effort].map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(','));
+    const rows = findings.map(f =>
+      [f.id,f.titre,f.severite,f.cvss_score,f.description,f.impact,f.remediation,f.source,f.urgence,f.effort]
+      .map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(',')
+    );
     const blob = new Blob([headers+'\n'+rows.join('\n')], {type:'text/csv;charset=utf-8'});
     download(blob, `agentsec_${scanResults.scanId||'scan'}.csv`);
   } else if(format === 'pdf') {
-    window.open('/api/download-pdf?path=' + encodeURIComponent(scanResults.pdfInfo.pdfPath));
+    const pdfPath = scanResults.pdfInfo?.pdfPath || scanResults.report_path || '';
+    if(pdfPath) window.open('/api/download-pdf?path=' + encodeURIComponent(pdfPath));
   }
 }
 function download(blob, name) {
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
 }
 
 // ========== HISTORY ==========
@@ -935,8 +1067,6 @@ async function loadHistory() {
     const data = await r.json();
     scanHistory = data.history || [];
     renderHistory(scanHistory);
-
-    // Populate filter
     const targets = [...new Set(scanHistory.map(h=>h.target))];
     const sel = document.getElementById('filterTarget');
     sel.innerHTML = '<option value="all">Toutes les cibles</option>';
@@ -971,7 +1101,7 @@ function renderHistory(data) {
 function filterHistory() {
   let data = [...scanHistory];
   const tFilter = document.getElementById('filterTarget').value;
-  const sort = document.getElementById('sortBy').value;
+  const sort    = document.getElementById('sortBy').value;
   if(tFilter !== 'all') data = data.filter(h=>h.target===tFilter);
   if(sort==='score_desc') data.sort((a,b)=>b.security_score-a.security_score);
   else if(sort==='score_asc') data.sort((a,b)=>a.security_score-b.security_score);
@@ -988,23 +1118,28 @@ function exportHistory() {
 
 // ========== CHARTS ==========
 async function loadCharts() {
-  if(chartsInit) return;
-  chartsInit = true;
+  // Destroy existing charts first to avoid stale data
+  ['scoreChart','vulnChart','trendChart'].forEach(id => {
+    const chart = Chart.getChart(id);
+    if(chart) chart.destroy();
+  });
+
   try {
     const r = await fetch('/api/trends');
     const data = await r.json();
     buildCharts(data.trends||[]);
+    chartsInit = true;
   } catch { buildCharts([]); }
 }
 
 function buildCharts(trends) {
-  const labels = trends.map(t=>t.date);
-  const scores = trends.map(t=>t.avg_score||0);
-  const criticals = trends.map(t=>t.avg_critical||0);
-  const highs = trends.map(t=>t.avg_high||0);
-  const mediums = trends.map(t=>t.avg_medium||0);
+  const labels   = trends.map(t=>t.date);
+  const scores   = trends.map(t=>t.avg_score||0);
+  const criticals= trends.map(t=>t.avg_critical||0);
+  const highs    = trends.map(t=>t.avg_high||0);
+  const mediums  = trends.map(t=>t.avg_medium||0);
 
-  Chart.defaults.color = '#8892a4';
+  Chart.defaults.color       = '#8892a4';
   Chart.defaults.borderColor = '#1e2d40';
 
   new Chart(document.getElementById('scoreChart'), {
@@ -1022,22 +1157,38 @@ function buildCharts(trends) {
         pointRadius: 4
       }]
     },
-    options: {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{min:0,max:100,grid:{color:'#1e2d40'}},x:{grid:{color:'#1e2d40'}}}}
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{y:{min:0,max:100,grid:{color:'#1e2d40'}},x:{grid:{color:'#1e2d40'}}}
+    }
   });
 
-  // Distribution pie
-  const currentStats = scanResults?.aiAnalysis?.stats || {};
+  // Distribution — use real stats from current scan result if available
+  const realStats = scanResults?.aiAnalysis?.stats || {};
+  const findings  = scanResults?.aiAnalysis?.findings_valides || [];
+  const scans     = scanResults?.scans || {};
+  const realCount = { critical:0, high:0, medium:0, low:0 };
+  findings.filter(f=>!f.faux_positif).forEach(f => {
+    const sev = (f.severite||'').toLowerCase();
+    if(realCount[sev] !== undefined) realCount[sev]++;
+  });
+
   new Chart(document.getElementById('vulnChart'), {
     type: 'doughnut',
     data: {
       labels: ['Critiques','Élevés','Moyens','Faibles'],
       datasets: [{
-        data: [currentStats.critical||0,currentStats.high||0,currentStats.medium||0,currentStats.low||0],
+        data: [realCount.critical, realCount.high, realCount.medium, realCount.low],
         backgroundColor: ['rgba(255,61,61,0.8)','rgba(255,140,0,0.8)','rgba(255,214,0,0.8)','rgba(0,255,136,0.8)'],
         borderWidth: 0
       }]
     },
-    options: {responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right'}},cutout:'65%'}
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'right'}},
+      cutout:'65%'
+    }
   });
 
   new Chart(document.getElementById('trendChart'), {
@@ -1050,7 +1201,11 @@ function buildCharts(trends) {
         {label:'Moyens',data:mediums,borderColor:'#ffd600',tension:0.4,pointRadius:3}
       ]
     },
-    options: {responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{y:{grid:{color:'#1e2d40'}},x:{grid:{color:'#1e2d40'}}}}
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'top'}},
+      scales:{y:{grid:{color:'#1e2d40'}},x:{grid:{color:'#1e2d40'}}}
+    }
   });
 }
 </script>
